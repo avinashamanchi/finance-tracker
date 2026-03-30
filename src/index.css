@@ -1,0 +1,89 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Core palette - deep navy with electric accents like Rocket Money */
+  --bg-0: #05070d;
+  --bg-1: #090e18;
+  --bg-2: #0e1520;
+  --bg-3: #141d2c;
+  --bg-card: #0f1825;
+  --bg-card-hover: #141e2e;
+  --bg-input: #0a1120;
+
+  /* Accent - electric blue-teal (Rocket Money vibe) */
+  --accent: #00d4aa;
+  --accent-dim: #007a63;
+  --accent-glow: rgba(0,212,170,0.15);
+  --accent-2: #3b82f6;
+  --accent-2-dim: #1d4ed8;
+
+  /* Status colors */
+  --green: #00d4aa;
+  --green-soft: #34d399;
+  --red: #ff5c5c;
+  --red-dim: #7f1d1d;
+  --gold: #f59e0b;
+  --gold-light: #fcd34d;
+  --purple: #8b5cf6;
+  --orange: #f97316;
+  --blue: #3b82f6;
+  --pink: #ec4899;
+
+  /* Text */
+  --text-0: #f0f6ff;
+  --text-1: #8ea4be;
+  --text-2: #4d6380;
+  --text-3: #2a3d55;
+
+  /* Borders */
+  --border: rgba(255,255,255,0.06);
+  --border-accent: rgba(0,212,170,0.25);
+  --border-blue: rgba(59,130,246,0.25);
+
+  /* Shadows */
+  --shadow: 0 8px 32px rgba(0,0,0,0.5);
+  --shadow-accent: 0 0 40px rgba(0,212,170,0.12);
+  --shadow-card: 0 4px 24px rgba(0,0,0,0.4);
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-xs: 6px;
+  --radius-pill: 999px;
+
+  --font-display: 'Cabinet Grotesk', 'Syne', sans-serif;
+  --font-body: 'Instrument Sans', 'DM Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
+  --transition-slow: all 0.4s cubic-bezier(0.4,0,0.2,1);
+  --spring: cubic-bezier(0.34,1.56,0.64,1);
+}
+
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg-0);
+  color: var(--text-0);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg-1); }
+::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+
+/* ── Keyframes ── */
+@keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+@keyframes fadeDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes scaleIn { from { opacity:0; transform:scale(0.94); } to { opacity:1; transform:scale(1); } }
+@keyframes slideRight { from { opacity:0; transform:translateX(-16px); } to { opacity:1; transform:translateX(0); } }
+@keyframes slideLeft { from { opacity:0; transform:translateX(16px); } to { opacity:1; transform:translateX(0); } }
+@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
+@keyframes shimmer { 0%{background-position:-200% center;} 100%{background-position:200% center;} }
+@keyframes glow { 0%,100%{box-shadow:0 0 20px rgba(0,212,170,0.15);} 50%{box-shadow:0 0 40px rgba(0,212,170,0.3);} }
+@keyframes float { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-8px);} }
+@keyframes progressFill { from{width:0;} to{width:var(--target-width);} }

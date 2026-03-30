@@ -1,0 +1,14 @@
+.app-layout { display:flex; min-height:100vh; }
+.main-content { flex:1; margin-left:240px; min-height:100vh; background:var(--bg-0); position:relative; }
+.main-content::before {
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background-image:
+    radial-gradient(ellipse 70% 50% at 75% 10%, rgba(0,212,170,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 15% 85%, rgba(59,130,246,0.03) 0%, transparent 50%);
+}
+.content-inner { position:relative; z-index:1; padding:36px 40px; max-width:1200px; }
+@media (max-width:768px) {
+  .main-content { margin-left:0; }
+  .content-inner { padding:72px 20px 24px; }
+}
+@media (max-width:480px) { .content-inner { padding:72px 14px 24px; } }

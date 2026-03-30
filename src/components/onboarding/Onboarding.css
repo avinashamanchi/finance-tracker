@@ -1,0 +1,331 @@
+/* ── Background ─────────────────────────────── */
+.onboarding-bg {
+  min-height: 100vh; background: var(--bg-0);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; position: relative; overflow: hidden;
+}
+.ob-orb {
+  position: fixed; border-radius: 50%;
+  filter: blur(100px); pointer-events: none; z-index: 0;
+}
+.ob-orb-1 {
+  width: 600px; height: 600px;
+  background: radial-gradient(circle,rgba(0,212,170,0.1) 0%,transparent 70%);
+  top: -200px; right: -100px;
+  animation: float 10s ease-in-out infinite;
+}
+.ob-orb-2 {
+  width: 400px; height: 400px;
+  background: radial-gradient(circle,rgba(59,130,246,0.08) 0%,transparent 70%);
+  bottom: -100px; left: -50px;
+  animation: float 14s ease-in-out infinite reverse;
+}
+.ob-orb-3 {
+  width: 300px; height: 300px;
+  background: radial-gradient(circle,rgba(139,92,246,0.06) 0%,transparent 70%);
+  top: 40%; left: 30%;
+  animation: float 18s ease-in-out infinite;
+}
+
+/* ── Shell ─────────────────────────────────── */
+.ob-shell {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 640px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: 0 40px 100px rgba(0,0,0,0.6), var(--shadow-accent);
+  overflow: hidden;
+  min-height: 520px;
+}
+
+/* ── Progress bar ────────────────────────── */
+.ob-progress-bar {
+  height: 3px; background: var(--bg-3); width: 100%;
+}
+.ob-progress-fill {
+  height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  transition: width 0.4s ease;
+  box-shadow: 0 0 12px rgba(0,212,170,0.4);
+}
+.ob-step-count {
+  text-align: right; padding: 12px 24px 0;
+  font-size: 11px; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: 1px; font-weight: 600;
+}
+
+/* ── Content ─────────────────────────────── */
+.ob-content { padding: 32px; }
+.ob-content.anim-in  { animation: fadeUp 0.3s ease; }
+.ob-content.anim-out { animation: fadeIn 0.15s ease reverse; opacity: 0; }
+
+/* ── Step shared ─────────────────────────── */
+.ob-step-icon { font-size: 40px; margin-bottom: 16px; display: block; }
+.ob-title {
+  font-family: var(--font-display); font-size: 26px; font-weight: 700;
+  color: var(--text-0); margin-bottom: 8px; line-height: 1.2;
+  font-family: 'Syne', sans-serif;
+}
+.ob-sub { font-size: 15px; color: var(--text-1); margin-bottom: 28px; line-height: 1.6; }
+
+/* ── Welcome ─────────────────────────────── */
+.ob-welcome { text-align: center; padding: 8px 0; }
+.ob-logo-big {
+  display: flex; align-items: center; gap: 10px;
+  justify-content: center; margin-bottom: 32px;
+}
+.ob-logo-icon { font-size: 36px; color: var(--accent); filter: drop-shadow(0 0 16px rgba(0,212,170,0.5)); }
+.ob-logo-text {
+  font-family: 'Syne', sans-serif; font-size: 30px; font-weight: 800;
+  color: var(--text-0);
+}
+.ob-welcome-title {
+  font-family: 'Syne', sans-serif; font-size: 36px; font-weight: 800;
+  line-height: 1.15; color: var(--text-0); margin-bottom: 16px;
+}
+.ob-highlight {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.ob-welcome-sub {
+  font-size: 16px; color: var(--text-1); line-height: 1.7;
+  margin-bottom: 28px;
+}
+.ob-feature-pills {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  justify-content: center; margin-bottom: 32px;
+}
+.ob-pill {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--radius-pill); padding: 6px 14px;
+  font-size: 13px; color: var(--text-1);
+}
+.ob-privacy-note { font-size: 12px; color: var(--text-3); margin-top: 14px; }
+
+/* ── Forms ───────────────────────────────── */
+.ob-form { display: flex; flex-direction: column; gap: 20px; }
+.ob-field { display: flex; flex-direction: column; gap: 8px; }
+.ob-field label {
+  font-size: 12px; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: 1px; font-weight: 600;
+}
+.ob-input {
+  background: var(--bg-input); border: 1px solid var(--border);
+  color: var(--text-0); padding: 12px 16px;
+  border-radius: var(--radius-sm); font-family: var(--font-body);
+  font-size: 15px; outline: none; transition: var(--transition); width: 100%;
+}
+.ob-input:focus { border-color: var(--accent-dim); box-shadow: 0 0 0 3px var(--accent-glow); }
+.ob-input::placeholder { color: var(--text-3); }
+.ob-input-inline {
+  background: transparent; border: none; border-bottom: 1px solid var(--border);
+  color: var(--text-0); padding: 4px 8px; font-family: var(--font-body);
+  font-size: 14px; outline: none; flex: 1;
+}
+
+/* ── Radio group ─────────────────────────── */
+.ob-radio-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.ob-radio {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-2);
+  color: var(--text-1); font-family: var(--font-body); font-size: 14px;
+  cursor: pointer; transition: var(--transition); font-weight: 500; flex: 1;
+  justify-content: center;
+}
+.ob-radio:hover { border-color: var(--accent-dim); color: var(--text-0); }
+.ob-radio.active { border-color: var(--accent-dim); background: var(--accent-glow); color: var(--accent); }
+.ob-radio-sm .ob-radio { flex: 0 0 auto; padding: 8px 14px; }
+
+/* ── Currency input ──────────────────────── */
+.curr-group { display: flex; flex-direction: column; gap: 6px; }
+.curr-label { font-size: 12px; color: var(--text-2); font-weight: 600; letter-spacing: 0.5px; }
+.curr-sublabel { font-size: 11px; color: var(--text-3); }
+.curr-wrap {
+  display: flex; align-items: center; gap: 0;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); overflow: hidden;
+  transition: var(--transition);
+}
+.curr-wrap:focus-within { border-color: var(--accent-dim); box-shadow: 0 0 0 3px var(--accent-glow); }
+.curr-sign { padding: 0 12px; color: var(--accent); font-weight: 600; font-size: 15px; flex-shrink: 0; }
+.curr-input {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: var(--text-0); font-family: var(--font-mono); font-size: 16px;
+  font-weight: 500; padding: 11px 0;
+}
+.curr-input::placeholder { color: var(--text-3); font-family: var(--font-body); }
+.curr-freq { padding: 0 12px; color: var(--text-3); font-size: 12px; flex-shrink: 0; }
+
+/* ── Income list ─────────────────────────── */
+.ob-income-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.ob-income-item {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px 16px;
+}
+.ob-income-label {
+  display: flex; align-items: center; gap: 8px;
+  min-width: 150px; font-size: 14px; font-weight: 500; color: var(--text-1);
+}
+.ob-income-total {
+  text-align: center; padding: 12px 16px;
+  background: var(--accent-glow); border: 1px solid var(--border-accent);
+  border-radius: var(--radius-sm); font-size: 14px; color: var(--text-1);
+}
+.ob-income-total strong { color: var(--accent); font-family: var(--font-mono); font-size: 16px; }
+
+/* ── Grids ───────────────────────────────── */
+.ob-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.ob-section-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px;
+  color: var(--text-2); font-weight: 700; margin: 20px 0 12px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.ob-subtotal {
+  margin-top: 16px; padding: 12px 16px;
+  background: rgba(59,130,246,0.06); border: 1px solid var(--border-blue);
+  border-radius: var(--radius-sm); font-size: 14px; color: var(--text-1); text-align: center;
+}
+.ob-subtotal strong { color: var(--blue); font-family: var(--font-mono); }
+
+/* ── Goals ───────────────────────────────── */
+.ob-goals-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 28px; }
+.ob-goal-card {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  gap: 8px; padding: 16px 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-2);
+  cursor: pointer; transition: var(--transition);
+  font-family: var(--font-body);
+}
+.ob-goal-card:hover { border-color: var(--accent-dim); background: var(--bg-3); }
+.ob-goal-card.active { border-color: var(--accent-dim); background: var(--accent-glow); }
+.ob-goal-icon { font-size: 24px; }
+.ob-goal-label { font-size: 11px; color: var(--text-1); text-align: center; font-weight: 500; line-height: 1.3; }
+.ob-goal-card.active .ob-goal-label { color: var(--accent); }
+.ob-goal-check {
+  position: absolute; top: 6px; right: 6px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent); color: #000; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ── Savings slider ──────────────────────── */
+.ob-savings-slider {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 20px;
+}
+.ob-slider-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 4px; font-size: 14px; color: var(--text-1);
+}
+.ob-accent { color: var(--accent); font-size: 18px; font-family: var(--font-mono); }
+.ob-slider-amount { font-size: 12px; color: var(--text-2); margin-bottom: 16px; }
+.ob-slider {
+  width: 100%; appearance: none; height: 6px;
+  background: var(--bg-3); border-radius: 3px; outline: none;
+  margin-bottom: 8px; cursor: pointer;
+}
+.ob-slider::-webkit-slider-thumb {
+  appearance: none; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent); cursor: pointer;
+  box-shadow: 0 0 12px rgba(0,212,170,0.4);
+  border: 2px solid var(--bg-0);
+}
+.ob-slider-labels {
+  display: flex; justify-content: space-between;
+  font-size: 10px; color: var(--text-3);
+}
+
+/* ── Warning ─────────────────────────────── */
+.ob-warning-box {
+  background: rgba(255,92,92,0.08); border: 1px solid rgba(255,92,92,0.25);
+  border-radius: var(--radius-sm); padding: 14px 16px;
+  font-size: 13px; color: #ff8080; line-height: 1.6; margin-top: 16px;
+}
+
+/* ── Review ──────────────────────────────── */
+.ob-review { padding-bottom: 8px; }
+.ob-summary-cards {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: 10px; margin-bottom: 24px;
+}
+.ob-sum-card {
+  border-radius: var(--radius-sm); padding: 16px;
+  text-align: center; border: 1px solid var(--border);
+}
+.ob-sum-card.income  { background:rgba(0,212,170,0.08); border-color:rgba(0,212,170,0.2); }
+.ob-sum-card.expenses{ background:rgba(255,92,92,0.06); border-color:rgba(255,92,92,0.2); }
+.ob-sum-card.savings { background:rgba(59,130,246,0.08); border-color:rgba(59,130,246,0.2); }
+.ob-sum-card.deficit { background:rgba(255,92,92,0.1); border-color:rgba(255,92,92,0.3); }
+.ob-sum-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-2); margin-bottom: 8px; font-weight: 600; }
+.ob-sum-val { font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--text-0); }
+.ob-sum-card.income  .ob-sum-val { color: var(--accent); }
+.ob-sum-card.expenses .ob-sum-val { color: var(--red); }
+.ob-sum-card.savings .ob-sum-val { color: var(--blue); }
+.ob-sum-card.deficit .ob-sum-val { color: var(--red); }
+
+.ob-budget-preview {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 16px; margin-bottom: 20px;
+}
+.ob-bp-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-2); font-weight: 700; margin-bottom: 14px; }
+.ob-bp-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.ob-bp-left { display: flex; align-items: center; gap: 10px; min-width: 160px; }
+.ob-bp-icon { width: 32px; height: 32px; border-radius: var(--radius-xs); display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.ob-bp-label { font-size: 13px; color: var(--text-1); }
+.ob-bp-right { flex: 1; display: flex; align-items: center; gap: 10px; }
+.ob-bp-bar-track { flex: 1; height: 4px; background: var(--bg-3); border-radius: 2px; overflow: hidden; }
+.ob-bp-bar-fill { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
+.ob-bp-amt { font-size: 13px; font-weight: 600; min-width: 60px; text-align: right; font-family: var(--font-mono); }
+
+.ob-goals-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; align-items: center; }
+.ob-goals-label { font-size: 12px; color: var(--text-2); font-weight: 600; }
+.ob-goal-chip {
+  background: var(--accent-glow); border: 1px solid var(--border-accent);
+  border-radius: var(--radius-pill); padding: 4px 12px;
+  font-size: 12px; color: var(--accent);
+}
+
+/* ── Buttons ─────────────────────────────── */
+.ob-btn-primary {
+  background: linear-gradient(135deg, var(--accent-dim), var(--accent));
+  color: #02100d; border: none; border-radius: var(--radius-sm);
+  padding: 13px 28px; font-family: 'Syne', sans-serif;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  transition: var(--transition); letter-spacing: 0.3px;
+}
+.ob-btn-primary:hover:not(.ob-btn-disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(0,212,170,0.3);
+}
+.ob-btn-primary.ob-btn-disabled { opacity: 0.4; cursor: not-allowed; }
+.ob-btn-xl { padding: 16px 40px; font-size: 16px; }
+.ob-btn-full { width: 100%; }
+.ob-btn-ghost {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-2); border-radius: var(--radius-sm);
+  padding: 10px 20px; font-family: var(--font-body); font-size: 14px;
+  cursor: pointer; transition: var(--transition); margin-bottom: 16px;
+}
+.ob-btn-ghost:hover { border-color: var(--text-2); color: var(--text-1); }
+.ob-btn-back { padding: 12px 20px; margin-bottom: 0; }
+
+/* ── Nav ─────────────────────────────────── */
+.ob-nav {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 32px 24px; border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+@media (max-width: 600px) {
+  .ob-grid-2 { grid-template-columns: 1fr; }
+  .ob-goals-grid { grid-template-columns: repeat(2,1fr); }
+  .ob-summary-cards { grid-template-columns: 1fr; }
+  .ob-welcome-title { font-size: 28px; }
+  .ob-content { padding: 24px 20px; }
+  .ob-nav { padding: 16px 20px 20px; }
+  .ob-radio-group { flex-direction: column; }
+  .ob-income-item { flex-direction: column; align-items: flex-start; }
+}
