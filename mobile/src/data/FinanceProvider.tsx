@@ -8,6 +8,8 @@ import {
   useRef,
   useState,
 } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { colors, spacing } from '../design/tokens';
 import type { ExpenseCategoryId } from '../domain/categories';
 import type { Budget, FinanceSnapshot, Transaction, TransactionDraft } from '../domain/types';
 import type { FinanceRepository } from './financeRepository';
@@ -159,8 +161,12 @@ export function SQLiteFinanceProvider({ children }: PropsWithChildren) {
     return () => { active = false; };
   }, []);
 
-  if (failed) return null;
-  if (!repository) return null;
+  if (failed) {
+    return <View style={providerStyles.center}><Text accessibilityRole="alert" style={providerStyles.error}>Finova could not open its local database. Close and reopen the app to try again.</Text></View>;
+  }
+  if (!repository) {
+    return <View style={providerStyles.center}><ActivityIndicator accessibilityLabel="Opening local Finova database" color={colors.jade} /></View>;
+  }
   return <FinanceProvider repository={repository}>{children}</FinanceProvider>;
 }
 
@@ -169,3 +175,8 @@ export function useFinance(): FinanceController {
   if (!value) throw new Error('useFinance must be used within FinanceProvider.');
   return value;
 }
+
+const providerStyles = StyleSheet.create({
+  center: { alignItems: 'center', backgroundColor: colors.ink, flex: 1, justifyContent: 'center', padding: spacing.lg },
+  error: { color: colors.coral, fontSize: 15, lineHeight: 22, textAlign: 'center' },
+});
