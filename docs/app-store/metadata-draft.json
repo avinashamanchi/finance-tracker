@@ -1,0 +1,22 @@
+{
+  "name": "Finova",
+  "subtitle": "Private Budget & Spending",
+  "promotionalText": "See income, spending, budgets, and six-month patterns in a private local ledger. Export or delete your data when you choose.",
+  "description": "Understand the money you record without creating an account or connecting a bank. Finova is a local-first ledger for tracking income, expenses, and monthly category budgets.\n\nYOUR MONTH AT A GLANCE\n\n• Add, edit, search, filter, and delete transactions.\n• See recorded income, spending, balance, and savings rate.\n• Set repeating monthly category limits.\n• Read on-track, near-limit, and over-limit budget states.\n• Review deterministic six-month income and expense patterns.\n\nYOUR DATA, YOUR ACTION\n\nFinance data is stored locally in this app. Finova has no account, bank connection, ads, tracking, or third-party analytics. JSON backup and CSV export happen only when you choose them through the iOS share sheet. Import validates a Finova backup and asks before replacing active data. Delete All removes active app data and Finova-owned temporary files from this installation. Existing device backups may restore earlier data.\n\nIMPORTANT LIMITS\n\nFinova reports only the entries you provide. Totals may be incomplete or wrong when information is missing or entered incorrectly. Finova is not financial, tax, legal, credit, or investment advice. It does not access accounts, block purchases, predict bills, detect fraud, execute transactions, or guarantee any outcome.",
+  "keywords": "budget,expense,income,ledger,spending,savings,cashflow,money,offline,private",
+  "primaryCategory": "Finance",
+  "secondaryCategory": "Productivity",
+  "privacyPolicyUrl": "https://avinashamanchi.github.io/finance-tracker/privacy.html",
+  "supportUrl": "https://avinashamanchi.github.io/finance-tracker/support.html",
+  "sellerName": "ACCOUNT HOLDER TO CONFIRM",
+  "copyright": "ACCOUNT HOLDER TO CONFIRM",
+  "submissionStatus": "BLOCKED",
+  "submissionBlockers": [
+    "Publish and anonymously verify the privacy and support URLs from the release branch.",
+    "Complete physical-iPhone, VoiceOver, Dynamic Type, and device-backup checks.",
+    "Create and validate a signed TestFlight build with the authorized Apple account.",
+    "Capture screenshots from the accepted TestFlight binary using synthetic data.",
+    "Complete App Store Connect privacy, age rating, category, seller, and copyright fields.",
+    "Obtain explicit authorization before upload or submission."
+  ]
+}

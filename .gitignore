@@ -2,3 +2,5 @@ node_modules
 build
 .env
 .worktrees/
+.DS_Store
+finova-readiness.txt

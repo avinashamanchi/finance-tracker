@@ -2,6 +2,35 @@
 
 A premium dark-themed personal finance tracker built with React + Chart.js. Track income and expenses, visualize spending trends, and manage budgets with real-time alerts.
 
+## 📱 iOS app
+
+The `mobile/` directory contains the iOS-first Expo/React Native implementation. It is a local-only, empty-by-default ledger with integer-cent arithmetic, transaction CRUD/search/filter, monthly category budgets, six-month insights, strict JSON backup import, CSV export, coordinated deletion, and in-app privacy/support limits.
+
+Core flows are Expo Go compatible:
+
+```bash
+cd mobile
+npm ci
+npm start
+```
+
+Scan the QR code in Expo Go while the phone and Mac are on the same network. Expo Go observation is a device checkpoint, not proof of a signed TestFlight/App Store build.
+
+Local release gates:
+
+```bash
+npm test -- --runInBand
+npm run typecheck
+npm run lint
+npm run expo:doctor
+npm run export:ios
+npm audit --audit-level=high
+npx expo prebuild --platform ios --no-install --clean
+git diff --exit-code -- package.json package-lock.json
+```
+
+App Store drafts and the explicit external blockers are in `docs/app-store/`. No signing, submission, approval, or publication is claimed by this repository.
+
 ---
 
 ## ✨ Features
@@ -95,7 +124,7 @@ finance-tracker/
 
 ## 📊 Resume Bullet
 
-> Developed a full-stack personal finance tracker with React and Chart.js, featuring real-time budget alerts, 6-month spending trend analysis, and a responsive dark-themed UI with localStorage persistence.
+> Developed local-first web and Expo/React Native personal finance trackers with budget alerts, six-month trend analysis, privacy controls, and offline persistence.
 
 ---
 
