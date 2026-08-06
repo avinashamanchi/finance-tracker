@@ -21,7 +21,14 @@ Status vocabulary: `PASS`, `FAIL`, `BLOCKED`, `UNVERIFIED`. A local green check 
 
 ## Automated verification record
 
-Exact final clean-clone evidence is recorded only after Task 7. Working-tree checks do not fill this section.
+The exact code candidate `e81959267bd219776108e5286c16e4993d5add38` passed from a fresh `git clone --no-hardlinks` under Node 22.23.2:
+
+- Mobile: 19 suites / 64 tests, TypeScript, lint, Expo Doctor 20/20, iOS export (1,798 modules; 4.7 MB Hermes bundle), and npm audit with 0 vulnerabilities.
+- Native structure: clean iOS Expo prebuild completed and did not change `package.json` or `package-lock.json`.
+- Release structure: 2 workflow files plus the Maestro YAML parsed; the redacted tracked/web/mobile bundle scan passed for 161 files; the icon was confirmed as an opaque 1024×1024 RGB PNG; the clone retained no tracked changes.
+- Public policy source: the legacy web client built successfully and copied `privacy.html` and `support.html` into its production artifact.
+
+The separate legacy Create React App web toolchain install reported 44 known dependency vulnerabilities (10 low, 11 moderate, 21 high, 2 critical). Those packages are not bundled into the native iOS candidate, but this finding must remain visible when the public web client and policy URLs are maintained or redeployed.
 
 ## Expo Go and physical-device gates
 
