@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Finova",
+    "slug": "finova-finance-tracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "finova",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "updates": {
+      "enabled": false
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.avinashamanchi.finova",
+      "buildNumber": "1",
+      "icon": "./assets/icon.png",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#08111A",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
