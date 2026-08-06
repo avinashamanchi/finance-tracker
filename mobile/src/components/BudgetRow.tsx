@@ -69,6 +69,7 @@ export function BudgetRow({
             onChangeText={(value) => { setAmount(value); setError(null); }}
             selectTextOnFocus
             style={styles.input}
+            testID={`budget-${categoryId}-amount`}
             value={amount}
           />
         </View>
@@ -78,6 +79,7 @@ export function BudgetRow({
           disabled={saving}
           onPress={() => void save()}
           style={styles.save}
+          testID={`budget-${categoryId}-save`}
         >
           <Text style={styles.saveText}>{saving ? 'Saving…' : 'Save'}</Text>
         </Pressable>

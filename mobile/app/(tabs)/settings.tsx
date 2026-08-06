@@ -1,5 +1,7 @@
-import { Text } from 'react-native';
-import { Screen } from '../../src/components/Screen';
-import { colors } from '../../src/design/tokens';
+import { useRouter } from 'expo-router';
+import { SettingsScreen } from '../../src/screens/SettingsScreen';
 
-export default function SettingsRoute() { return <Screen><Text style={{ color: colors.text, fontSize: 28, fontWeight: '900' }}>Settings</Text></Screen>; }
+export default function SettingsRoute() {
+  const router = useRouter();
+  return <SettingsScreen onPrivacy={() => router.push('/privacy')} onSupport={() => router.push('/support')} />;
+}

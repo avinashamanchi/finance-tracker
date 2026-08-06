@@ -85,19 +85,19 @@ export function TransactionEditor({ transaction, onSaved, onCancel }: {
           </View>
 
           <Field label="Amount" error={errors.amount}>
-            <View style={styles.amountWrap}><Text style={styles.currency}>$</Text><TextInput accessibilityLabel="Amount" keyboardType="decimal-pad" onChangeText={(value) => { setAmount(value); setErrors((current) => ({ ...current, amount: '' })); }} placeholder="0.00" placeholderTextColor={colors.textMuted} style={styles.input} value={amount} /></View>
+            <View style={styles.amountWrap}><Text style={styles.currency}>$</Text><TextInput accessibilityLabel="Amount" keyboardType="decimal-pad" onChangeText={(value) => { setAmount(value); setErrors((current) => ({ ...current, amount: '' })); }} placeholder="0.00" placeholderTextColor={colors.textMuted} style={styles.input} testID="transaction-amount" value={amount} /></View>
           </Field>
 
           <Field label="Description" error={errors.description}>
-            <TextInput accessibilityLabel="Description" maxLength={120} onChangeText={(value) => { setDescription(value); setErrors((current) => ({ ...current, description: '' })); }} placeholder="What was this for?" placeholderTextColor={colors.textMuted} style={styles.textInput} value={description} />
+            <TextInput accessibilityLabel="Description" maxLength={120} onChangeText={(value) => { setDescription(value); setErrors((current) => ({ ...current, description: '' })); }} placeholder="What was this for?" placeholderTextColor={colors.textMuted} style={styles.textInput} testID="transaction-description" value={description} />
           </Field>
 
           <Field label="Date" error={errors.date}>
-            <TextInput accessibilityLabel="Date YYYY-MM-DD" autoCapitalize="none" keyboardType="numbers-and-punctuation" maxLength={10} onChangeText={(value) => { setDate(value); setErrors((current) => ({ ...current, date: '' })); }} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted} style={styles.textInput} value={date} />
+            <TextInput accessibilityLabel="Date YYYY-MM-DD" autoCapitalize="none" keyboardType="numbers-and-punctuation" maxLength={10} onChangeText={(value) => { setDate(value); setErrors((current) => ({ ...current, date: '' })); }} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted} style={styles.textInput} testID="transaction-date" value={date} />
           </Field>
 
           <View style={styles.field}><Text style={styles.label}>Category</Text><View style={styles.categories}>{categories.map((category) => (
-            <Pressable accessibilityLabel={`${category.label} category`} accessibilityRole="radio" accessibilityState={{ checked: categoryId === category.id }} key={category.id} onPress={() => setCategoryId(category.id)} style={[styles.category, categoryId === category.id && styles.categoryActive]}>
+            <Pressable accessibilityLabel={`${category.label} category`} accessibilityRole="radio" accessibilityState={{ checked: categoryId === category.id }} key={category.id} onPress={() => setCategoryId(category.id)} style={[styles.category, categoryId === category.id && styles.categoryActive]} testID={`category-${category.id}`}>
               <Ionicons color={categoryId === category.id ? colors.jade : colors.textMuted} name={category.icon as never} size={17} />
               <Text style={[styles.categoryText, categoryId === category.id && styles.categoryTextActive]}>{category.label}</Text>
             </Pressable>
@@ -106,7 +106,7 @@ export function TransactionEditor({ transaction, onSaved, onCancel }: {
           <View style={styles.recurring}><View><Text style={styles.recurringTitle}>Recurring item</Text><Text style={styles.recurringDetail}>A label only—Finova never creates transactions automatically.</Text></View><Switch accessibilityLabel="Recurring transaction" onValueChange={setIsRecurring} trackColor={{ false: colors.border, true: colors.jadeDark }} thumbColor={isRecurring ? colors.jade : colors.textMuted} value={isRecurring} /></View>
 
           {errors.form ? <Text accessibilityLiveRegion="polite" style={styles.error}>{errors.form}</Text> : null}
-          <Pressable accessibilityLabel="Save transaction" accessibilityRole="button" disabled={saving} onPress={() => void save()} style={styles.save}><Text style={styles.saveText}>{saving ? 'Saving…' : transaction ? 'Save changes' : 'Add transaction'}</Text></Pressable>
+          <Pressable accessibilityLabel="Save transaction" accessibilityRole="button" disabled={saving} onPress={() => void save()} style={styles.save} testID="transaction-save"><Text style={styles.saveText}>{saving ? 'Saving…' : transaction ? 'Save changes' : 'Add transaction'}</Text></Pressable>
           <Pressable accessibilityLabel="Cancel transaction editor" accessibilityRole="button" onPress={onCancel} style={styles.cancel}><Text style={styles.cancelText}>Cancel</Text></Pressable>
         </ScrollView>
       </KeyboardAvoidingView>

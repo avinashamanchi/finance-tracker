@@ -1,0 +1,40 @@
+appId: com.avinashamanchi.finova
+name: Finova iOS core local flow
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: home-add
+- tapOn:
+    id: transaction-amount
+- inputText: "42.15"
+- tapOn:
+    id: transaction-description
+- inputText: "Market test purchase"
+- tapOn:
+    id: transaction-date
+- tapOn:
+    id: category-groceries
+- tapOn:
+    id: transaction-save
+- assertVisible: "Market test purchase"
+- tapOn:
+    id: tab-budgets
+- tapOn:
+    id: budget-groceries-amount
+- eraseText
+- inputText: "100"
+- tapOn:
+    id: budget-groceries-save
+- assertVisible: "On track — 42% used"
+- tapOn:
+    id: tab-settings
+- tapOn:
+    id: settings-export-csv
+- back
+- tapOn:
+    id: settings-delete-confirmation
+- inputText: "DELETE"
+- tapOn:
+    id: settings-delete-all
+- assertVisible: "All active Finova data was deleted from this installation."

@@ -43,7 +43,7 @@ export function HomeScreen({ initialMonth, onAdd, onInsights }: {
           <Text style={styles.title}>Your money, clearly.</Text>
           <Text style={styles.subtitle}>Private on this device until you choose to export.</Text>
         </View>
-        <Pressable accessibilityLabel="Add transaction" accessibilityRole="button" onPress={onAdd} style={styles.add}>
+        <Pressable accessibilityLabel="Add transaction" accessibilityRole="button" onPress={onAdd} style={styles.add} testID="home-add">
           <Ionicons color={colors.ink} name="add" size={25} />
         </Pressable>
       </View>
