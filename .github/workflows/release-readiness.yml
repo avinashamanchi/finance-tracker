@@ -26,6 +26,7 @@ jobs:
         working-directory: mobile
         run: |
           npm test -- --runInBand
+          npm test -- --runInBand __tests__/legacyWebQuarantine.test.ts
           npm run typecheck
           npm run lint
           npm run expo:doctor

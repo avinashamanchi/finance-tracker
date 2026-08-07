@@ -27,6 +27,9 @@ jobs:
       - name: Test mobile behavior
         working-directory: mobile
         run: npm test -- --runInBand
+      - name: Assert supported surface
+        working-directory: mobile
+        run: npm test -- --runInBand __tests__/legacyWebQuarantine.test.ts
       - name: Type-check mobile app
         working-directory: mobile
         run: npm run typecheck
