@@ -2,7 +2,12 @@ import * as Crypto from 'expo-crypto';
 import * as SQLite from 'expo-sqlite';
 import type { ExpenseCategoryId } from '../domain/categories';
 import type { Budget, FinanceSnapshot, Transaction, TransactionDraft } from '../domain/types';
-import { CREATE_SCHEMA_SQL } from './schema';
+import {
+  createExpoMigrationDatabase,
+  type ExpoMigrationDatabaseSource,
+} from './configureConnection';
+import { runMigrations } from './migrations';
+import type { MigrationContext, MigrationDatabase } from './migrations/types';
 import {
   validateBudget,
   validateBudgetAmount,
@@ -38,6 +43,23 @@ type TransactionRow = {
 
 type BudgetRow = { category_id: ExpenseCategoryId; limit_cents: number; updated_at: string };
 
+type LedgerIdRow = { id: string };
+
+function currentLocalMonth(now: Date): string {
+  return `${now.getFullYear().toString().padStart(4, '0')}-${(now.getMonth() + 1)
+    .toString()
+    .padStart(2, '0')}`;
+}
+
+function createMigrationContext(): MigrationContext {
+  const now = new Date();
+  return {
+    legacyLedgerId: Crypto.randomUUID(),
+    currentMonth: currentLocalMonth(now),
+    nowIso: now.toISOString(),
+  };
+}
+
 function mapTransaction(row: TransactionRow): Transaction {
   return validateTransaction({
     id: row.id,
@@ -61,15 +83,34 @@ function mapBudget(row: BudgetRow): Budget {
 }
 
 export class SQLiteFinanceRepository implements FinanceRepository {
-  constructor(private readonly database: SQLite.SQLiteDatabase) {}
+  private readonly migrationDatabase: MigrationDatabase;
+  private ledgerId: string | null = null;
+
+  constructor(
+    private readonly database: SQLite.SQLiteDatabase,
+    private readonly migrationContext: MigrationContext = createMigrationContext(),
+  ) {
+    this.migrationDatabase = createExpoMigrationDatabase(
+      database as unknown as ExpoMigrationDatabaseSource,
+    );
+  }
 
   async initialize(): Promise<void> {
-    await this.database.execAsync(CREATE_SCHEMA_SQL);
+    await runMigrations(this.migrationDatabase, this.migrationContext);
+    const ledger = await this.database.getFirstAsync<LedgerIdRow>(
+      'SELECT id FROM ledgers ORDER BY rowid LIMIT 1',
+    );
+    if (!ledger) throw new Error('Finova ledger could not be initialized.');
+    this.ledgerId = ledger.id;
   }
 
   async listTransactions(): Promise<Transaction[]> {
     const rows = await this.database.getAllAsync<TransactionRow>(
-      'SELECT * FROM transactions ORDER BY occurred_on DESC, created_at DESC, id DESC',
+      `SELECT id, kind, amount_minor AS amount_cents, category_id, description, occurred_on,
+              legacy_recurring AS is_recurring, created_at, updated_at
+       FROM transactions WHERE ledger_id = ?
+       ORDER BY occurred_on DESC, created_at DESC, id DESC`,
+      this.requireLedgerId(),
     );
     return rows.map(mapTransaction);
   }
@@ -90,7 +131,11 @@ export class SQLiteFinanceRepository implements FinanceRepository {
   async updateTransaction(id: string, draft: TransactionDraft): Promise<Transaction> {
     const valid = validateDraft(draft);
     const existing = await this.database.getFirstAsync<TransactionRow>(
-      'SELECT * FROM transactions WHERE id = ?', id,
+      `SELECT id, kind, amount_minor AS amount_cents, category_id, description, occurred_on,
+              legacy_recurring AS is_recurring, created_at, updated_at
+       FROM transactions WHERE id = ? AND ledger_id = ?`,
+      id,
+      this.requireLedgerId(),
     );
     if (!existing) throw new Error('Transaction not found.');
     const transaction: Transaction = {
@@ -99,8 +144,8 @@ export class SQLiteFinanceRepository implements FinanceRepository {
       updatedAt: new Date().toISOString(),
     };
     await this.database.runAsync(
-      `UPDATE transactions SET kind = ?, amount_cents = ?, category_id = ?, description = ?,
-       occurred_on = ?, is_recurring = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE transactions SET kind = ?, amount_minor = ?, category_id = ?, description = ?,
+       occurred_on = ?, legacy_recurring = ?, updated_at = ? WHERE id = ? AND ledger_id = ?`,
       transaction.kind,
       transaction.amountCents,
       transaction.categoryId,
@@ -109,31 +154,53 @@ export class SQLiteFinanceRepository implements FinanceRepository {
       transaction.isRecurring ? 1 : 0,
       transaction.updatedAt,
       transaction.id,
+      this.requireLedgerId(),
     );
     return transaction;
   }
 
   async deleteTransaction(id: string): Promise<void> {
-    await this.database.runAsync('DELETE FROM transactions WHERE id = ?', id);
+    await this.database.runAsync(
+      'DELETE FROM transactions WHERE id = ? AND ledger_id = ?',
+      id,
+      this.requireLedgerId(),
+    );
   }
 
   async listBudgets(): Promise<Budget[]> {
-    const rows = await this.database.getAllAsync<BudgetRow>('SELECT * FROM budgets ORDER BY category_id');
+    const rows = await this.database.getAllAsync<BudgetRow>(
+      `SELECT category_id, limit_minor AS limit_cents, updated_at
+       FROM budget_plans WHERE ledger_id = ? AND month = ? ORDER BY category_id`,
+      this.requireLedgerId(),
+      this.migrationContext.currentMonth,
+    );
     return rows.map(mapBudget);
   }
 
   async setBudget(categoryId: ExpenseCategoryId, limitCents: number): Promise<Budget | undefined> {
     validateBudgetAmount(categoryId, limitCents);
     if (limitCents === 0) {
-      await this.database.runAsync('DELETE FROM budgets WHERE category_id = ?', categoryId);
+      await this.database.runAsync(
+        'DELETE FROM budget_plans WHERE ledger_id = ? AND category_id = ? AND month = ?',
+        this.requireLedgerId(),
+        categoryId,
+        this.migrationContext.currentMonth,
+      );
       return undefined;
     }
     const budget: Budget = { categoryId, limitCents, updatedAt: new Date().toISOString() };
     await this.database.runAsync(
-      `INSERT INTO budgets (category_id, limit_cents, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(category_id) DO UPDATE SET limit_cents = excluded.limit_cents,
+      `INSERT INTO budget_plans(
+         ledger_id, category_id, month, limit_minor, rollover_policy, updated_at
+       ) VALUES (?, ?, ?, ?, 'none', ?)
+       ON CONFLICT(ledger_id, category_id, month) DO UPDATE SET
+       limit_minor = excluded.limit_minor,
        updated_at = excluded.updated_at`,
-      budget.categoryId, budget.limitCents, budget.updatedAt,
+      this.requireLedgerId(),
+      budget.categoryId,
+      this.migrationContext.currentMonth,
+      budget.limitCents,
+      budget.updatedAt,
     );
     return budget;
   }
@@ -146,13 +213,23 @@ export class SQLiteFinanceRepository implements FinanceRepository {
   async replaceAll(snapshot: FinanceSnapshot): Promise<void> {
     const valid = validateSnapshot(snapshot);
     await this.database.withTransactionAsync(async () => {
-      await this.database.runAsync('DELETE FROM transactions');
-      await this.database.runAsync('DELETE FROM budgets');
+      await this.database.runAsync('DELETE FROM transactions WHERE ledger_id = ?', this.requireLedgerId());
+      await this.database.runAsync(
+        'DELETE FROM budget_plans WHERE ledger_id = ? AND month = ?',
+        this.requireLedgerId(),
+        this.migrationContext.currentMonth,
+      );
       for (const transaction of valid.transactions) await this.insertTransaction(transaction);
       for (const budget of valid.budgets) {
         await this.database.runAsync(
-          'INSERT INTO budgets (category_id, limit_cents, updated_at) VALUES (?, ?, ?)',
-          budget.categoryId, budget.limitCents, budget.updatedAt,
+          `INSERT INTO budget_plans(
+             ledger_id, category_id, month, limit_minor, rollover_policy, updated_at
+           ) VALUES (?, ?, ?, ?, 'none', ?)`,
+          this.requireLedgerId(),
+          budget.categoryId,
+          this.migrationContext.currentMonth,
+          budget.limitCents,
+          budget.updatedAt,
         );
       }
     });
@@ -160,17 +237,23 @@ export class SQLiteFinanceRepository implements FinanceRepository {
 
   async deleteAll(): Promise<void> {
     await this.database.withTransactionAsync(async () => {
-      await this.database.runAsync('DELETE FROM transactions');
-      await this.database.runAsync('DELETE FROM budgets');
+      await this.database.runAsync('DELETE FROM transactions WHERE ledger_id = ?', this.requireLedgerId());
+      await this.database.runAsync(
+        'DELETE FROM budget_plans WHERE ledger_id = ? AND month = ?',
+        this.requireLedgerId(),
+        this.migrationContext.currentMonth,
+      );
     });
   }
 
   private async insertTransaction(transaction: Transaction): Promise<void> {
     await this.database.runAsync(
       `INSERT INTO transactions
-       (id, kind, amount_cents, category_id, description, occurred_on, is_recurring, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, ledger_id, kind, amount_minor, category_id, description, occurred_on,
+        legacy_recurring, source_template_id, source_due_on, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
       transaction.id,
+      this.requireLedgerId(),
       transaction.kind,
       transaction.amountCents,
       transaction.categoryId,
@@ -180,6 +263,11 @@ export class SQLiteFinanceRepository implements FinanceRepository {
       transaction.createdAt,
       transaction.updatedAt,
     );
+  }
+
+  private requireLedgerId(): string {
+    if (!this.ledgerId) throw new Error('Finova repository has not been initialized.');
+    return this.ledgerId;
   }
 }
 
