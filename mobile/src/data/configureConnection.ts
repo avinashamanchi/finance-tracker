@@ -33,17 +33,29 @@ function expoAdapter(
       source.getAllAsync<T>(sql, [...params])
     ),
     exclusive: async <T>(work: (transaction: MigrationDatabase) => Promise<T>) => {
-      if (!mayStartTransaction || !source.withExclusiveTransactionAsync) {
+      if (!mayStartTransaction) {
         throw new Error('Nested migration transactions are not supported.');
       }
-      let result: T | undefined;
-      let completed = false;
-      await source.withExclusiveTransactionAsync(async (transaction) => {
-        result = await work(expoAdapter(transaction, false));
-        completed = true;
-      });
-      if (!completed) throw new Error('Exclusive migration transaction did not complete.');
-      return result as T;
+      let transactionStarted = false;
+      try {
+        await source.execAsync('BEGIN IMMEDIATE');
+        transactionStarted = true;
+        const result = await work(expoAdapter(source, false));
+        await source.execAsync('COMMIT');
+        transactionStarted = false;
+        return result;
+      } catch (error) {
+        if (transactionStarted) {
+          try {
+            await source.execAsync('ROLLBACK');
+          } catch (rollbackError) {
+            const failure = new Error('SQLite migration failed and its rollback also failed.');
+            Object.assign(failure, { cause: error, rollbackError });
+            throw failure;
+          }
+        }
+        throw error;
+      }
     },
   };
 }
@@ -54,9 +66,9 @@ export function createExpoMigrationDatabase(source: ExpoMigrationDatabaseSource)
 
 export async function configureConnection(database: MigrationDatabase): Promise<void> {
   await database.exec(`
+    PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS};
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
-    PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS};
   `);
 
   const journal = await database.first<{ journal_mode: string }>('PRAGMA journal_mode');

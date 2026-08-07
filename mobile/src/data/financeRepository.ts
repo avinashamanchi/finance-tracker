@@ -46,13 +46,16 @@ type BudgetRow = { category_id: ExpenseCategoryId; limit_cents: number; updated_
 type LedgerIdRow = { id: string };
 
 function currentLocalMonth(now: Date): string {
-  return `${now.getFullYear().toString().padStart(4, '0')}-${(now.getMonth() + 1)
+  const year = now.getFullYear();
+  if (!Number.isFinite(now.getTime()) || year < 0 || year > 9999) {
+    throw new Error('Finova could not determine the current local month.');
+  }
+  return `${year.toString().padStart(4, '0')}-${(now.getMonth() + 1)
     .toString()
     .padStart(2, '0')}`;
 }
 
-function createMigrationContext(): MigrationContext {
-  const now = new Date();
+function createMigrationContext(now: Date): MigrationContext {
   return {
     legacyLedgerId: Crypto.randomUUID(),
     currentMonth: currentLocalMonth(now),
@@ -84,12 +87,17 @@ function mapBudget(row: BudgetRow): Budget {
 
 export class SQLiteFinanceRepository implements FinanceRepository {
   private readonly migrationDatabase: MigrationDatabase;
+  private readonly migrationContext: MigrationContext;
+  private readonly clock: () => Date;
   private ledgerId: string | null = null;
 
   constructor(
     private readonly database: SQLite.SQLiteDatabase,
-    private readonly migrationContext: MigrationContext = createMigrationContext(),
+    migrationContext?: MigrationContext,
+    clock: () => Date = () => new Date(),
   ) {
+    this.clock = clock;
+    this.migrationContext = migrationContext ?? createMigrationContext(this.readClock());
     this.migrationDatabase = createExpoMigrationDatabase(
       database as unknown as ExpoMigrationDatabaseSource,
     );
@@ -117,7 +125,7 @@ export class SQLiteFinanceRepository implements FinanceRepository {
 
   async createTransaction(draft: TransactionDraft): Promise<Transaction> {
     const valid = validateDraft(draft);
-    const now = new Date().toISOString();
+    const now = this.readClock().toISOString();
     const transaction: Transaction = {
       ...valid,
       id: Crypto.randomUUID(),
@@ -141,7 +149,7 @@ export class SQLiteFinanceRepository implements FinanceRepository {
     const transaction: Transaction = {
       ...mapTransaction(existing),
       ...valid,
-      updatedAt: new Date().toISOString(),
+      updatedAt: this.readClock().toISOString(),
     };
     await this.database.runAsync(
       `UPDATE transactions SET kind = ?, amount_minor = ?, category_id = ?, description = ?,
@@ -168,27 +176,30 @@ export class SQLiteFinanceRepository implements FinanceRepository {
   }
 
   async listBudgets(): Promise<Budget[]> {
+    const month = currentLocalMonth(this.readClock());
     const rows = await this.database.getAllAsync<BudgetRow>(
       `SELECT category_id, limit_minor AS limit_cents, updated_at
-       FROM budget_plans WHERE ledger_id = ? AND month = ? ORDER BY category_id`,
+      FROM budget_plans WHERE ledger_id = ? AND month = ? ORDER BY category_id`,
       this.requireLedgerId(),
-      this.migrationContext.currentMonth,
+      month,
     );
     return rows.map(mapBudget);
   }
 
   async setBudget(categoryId: ExpenseCategoryId, limitCents: number): Promise<Budget | undefined> {
     validateBudgetAmount(categoryId, limitCents);
+    const now = this.readClock();
+    const month = currentLocalMonth(now);
     if (limitCents === 0) {
       await this.database.runAsync(
         'DELETE FROM budget_plans WHERE ledger_id = ? AND category_id = ? AND month = ?',
         this.requireLedgerId(),
         categoryId,
-        this.migrationContext.currentMonth,
+        month,
       );
       return undefined;
     }
-    const budget: Budget = { categoryId, limitCents, updatedAt: new Date().toISOString() };
+    const budget: Budget = { categoryId, limitCents, updatedAt: now.toISOString() };
     await this.database.runAsync(
       `INSERT INTO budget_plans(
          ledger_id, category_id, month, limit_minor, rollover_policy, updated_at
@@ -198,7 +209,7 @@ export class SQLiteFinanceRepository implements FinanceRepository {
        updated_at = excluded.updated_at`,
       this.requireLedgerId(),
       budget.categoryId,
-      this.migrationContext.currentMonth,
+      month,
       budget.limitCents,
       budget.updatedAt,
     );
@@ -212,57 +223,81 @@ export class SQLiteFinanceRepository implements FinanceRepository {
 
   async replaceAll(snapshot: FinanceSnapshot): Promise<void> {
     const valid = validateSnapshot(snapshot);
-    await this.database.withTransactionAsync(async () => {
-      await this.database.runAsync('DELETE FROM transactions WHERE ledger_id = ?', this.requireLedgerId());
-      await this.database.runAsync(
-        'DELETE FROM budget_plans WHERE ledger_id = ? AND month = ?',
-        this.requireLedgerId(),
-        this.migrationContext.currentMonth,
-      );
-      for (const transaction of valid.transactions) await this.insertTransaction(transaction);
+    const month = currentLocalMonth(this.readClock());
+    await this.migrationDatabase.exclusive(async (database) => {
+      await this.clearLedgerFinanceRows(database);
+      for (const transaction of valid.transactions) await this.insertTransaction(transaction, database);
       for (const budget of valid.budgets) {
-        await this.database.runAsync(
+        await database.run(
           `INSERT INTO budget_plans(
              ledger_id, category_id, month, limit_minor, rollover_policy, updated_at
            ) VALUES (?, ?, ?, ?, 'none', ?)`,
-          this.requireLedgerId(),
-          budget.categoryId,
-          this.migrationContext.currentMonth,
-          budget.limitCents,
-          budget.updatedAt,
+          [
+            this.requireLedgerId(),
+            budget.categoryId,
+            month,
+            budget.limitCents,
+            budget.updatedAt,
+          ],
         );
       }
     });
   }
 
   async deleteAll(): Promise<void> {
-    await this.database.withTransactionAsync(async () => {
-      await this.database.runAsync('DELETE FROM transactions WHERE ledger_id = ?', this.requireLedgerId());
-      await this.database.runAsync(
-        'DELETE FROM budget_plans WHERE ledger_id = ? AND month = ?',
-        this.requireLedgerId(),
-        this.migrationContext.currentMonth,
-      );
+    await this.migrationDatabase.exclusive(async (database) => {
+      await this.clearLedgerFinanceRows(database);
     });
   }
 
-  private async insertTransaction(transaction: Transaction): Promise<void> {
-    await this.database.runAsync(
+  private async insertTransaction(
+    transaction: Transaction,
+    database: MigrationDatabase = this.migrationDatabase,
+  ): Promise<void> {
+    await database.run(
       `INSERT INTO transactions
        (id, ledger_id, kind, amount_minor, category_id, description, occurred_on,
         legacy_recurring, source_template_id, source_due_on, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
-      transaction.id,
-      this.requireLedgerId(),
-      transaction.kind,
-      transaction.amountCents,
-      transaction.categoryId,
-      transaction.description,
-      transaction.occurredOn,
-      transaction.isRecurring ? 1 : 0,
-      transaction.createdAt,
-      transaction.updatedAt,
+      [
+        transaction.id,
+        this.requireLedgerId(),
+        transaction.kind,
+        transaction.amountCents,
+        transaction.categoryId,
+        transaction.description,
+        transaction.occurredOn,
+        transaction.isRecurring ? 1 : 0,
+        transaction.createdAt,
+        transaction.updatedAt,
+      ],
     );
+  }
+
+  private async clearLedgerFinanceRows(database: MigrationDatabase): Promise<void> {
+    const ledgerId = this.requireLedgerId();
+    await database.run(
+      `DELETE FROM goal_contributions
+       WHERE goal_id IN (SELECT id FROM savings_goals WHERE ledger_id = ?)`,
+      [ledgerId],
+    );
+    await database.run(
+      `DELETE FROM expected_occurrences
+       WHERE template_id IN (SELECT id FROM recurring_templates WHERE ledger_id = ?)`,
+      [ledgerId],
+    );
+    await database.run('DELETE FROM savings_goals WHERE ledger_id = ?', [ledgerId]);
+    await database.run('DELETE FROM recurring_templates WHERE ledger_id = ?', [ledgerId]);
+    await database.run('DELETE FROM transactions WHERE ledger_id = ?', [ledgerId]);
+    await database.run('DELETE FROM budget_plans WHERE ledger_id = ?', [ledgerId]);
+  }
+
+  private readClock(): Date {
+    const value = this.clock();
+    if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+      throw new Error('Finova clock returned an invalid date.');
+    }
+    return new Date(value.getTime());
   }
 
   private requireLedgerId(): string {

@@ -175,7 +175,17 @@ const FROZEN_V4_DELTA_SQL = `
   PRAGMA user_version = 4;
 `;
 
-type FixtureVersion = 'pristine-v0' | 'transactions-v0' | 'budgets-v0' | 'v1' | 'v2' | 'v3' | 'v4';
+type FixtureVersion =
+  | 'pristine-v0'
+  | 'full-v0'
+  | 'missing-index-v0'
+  | 'transactions-v0'
+  | 'transactions-missing-index-v0'
+  | 'budgets-v0'
+  | 'v1'
+  | 'v2'
+  | 'v3'
+  | 'v4';
 
 function seedShippedRows(database: MigrationDatabase): Promise<void> {
   return database.exec(`
@@ -200,8 +210,20 @@ async function createFixture(database: MigrationDatabase, fixture: FixtureVersio
   if (fixture === 'pristine-v0') return;
   await database.exec(SHIPPED_V1_SQL);
   await seedShippedRows(database);
+  if (fixture === 'full-v0') {
+    await database.exec('PRAGMA user_version = 0;');
+    return;
+  }
+  if (fixture === 'missing-index-v0') {
+    await database.exec('DROP INDEX transactions_occurred_on; PRAGMA user_version = 0;');
+    return;
+  }
   if (fixture === 'transactions-v0') {
     await database.exec('DROP TABLE budgets; PRAGMA user_version = 0;');
+    return;
+  }
+  if (fixture === 'transactions-missing-index-v0') {
+    await database.exec('DROP TABLE budgets; DROP INDEX transactions_occurred_on; PRAGMA user_version = 0;');
     return;
   }
   if (fixture === 'budgets-v0') {
@@ -214,6 +236,49 @@ async function createFixture(database: MigrationDatabase, fixture: FixtureVersio
   await database.exec(FROZEN_V3_DELTA_SQL);
   if (fixture === 'v3') return;
   await database.exec(FROZEN_V4_DELTA_SQL);
+}
+
+async function alterCompatibleNamedFrozenFixture(
+  database: MigrationDatabase,
+  fixture: 'v1' | 'v2' | 'v3' | 'v4',
+): Promise<void> {
+  if (fixture === 'v1') {
+    await database.exec(`
+      DROP INDEX transactions_occurred_on;
+      CREATE INDEX transactions_occurred_on ON transactions(created_at DESC);
+    `);
+    return;
+  }
+  if (fixture === 'v2') {
+    await database.exec("UPDATE ledgers SET name = 'Household'");
+    return;
+  }
+  if (fixture === 'v3') {
+    await database.exec(`
+      PRAGMA foreign_keys = OFF;
+      DROP INDEX expected_occurrences_due;
+      ALTER TABLE expected_occurrences RENAME TO expected_occurrences_wrong;
+      CREATE TABLE expected_occurrences (
+        id TEXT PRIMARY KEY NOT NULL,
+        template_id TEXT NOT NULL REFERENCES recurring_templates(id) ON DELETE CASCADE,
+        due_on TEXT NOT NULL,
+        transaction_id TEXT REFERENCES transactions(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(template_id, due_on)
+      );
+      INSERT INTO expected_occurrences SELECT * FROM expected_occurrences_wrong;
+      DROP TABLE expected_occurrences_wrong;
+      CREATE INDEX expected_occurrences_due ON expected_occurrences(due_on, template_id);
+      PRAGMA foreign_keys = ON;
+    `);
+    return;
+  }
+  await database.exec(`
+    DROP INDEX savings_goals_active_name;
+    CREATE UNIQUE INDEX savings_goals_active_name
+      ON savings_goals(ledger_id, lower(name));
+  `);
 }
 
 async function logicalDigest(database: MigrationDatabase): Promise<string> {
@@ -307,6 +372,65 @@ function expoDatabaseFrom(database: MigrationDatabase, allowExclusive = true): R
   return source;
 }
 
+async function seedEveryFinanceTable(database: MigrationDatabase, ledgerId: string): Promise<void> {
+  await database.exec(`
+    INSERT INTO transactions(
+      id, ledger_id, kind, amount_minor, category_id, description, occurred_on,
+      legacy_recurring, source_template_id, source_due_on, created_at, updated_at
+    ) VALUES(
+      'lifecycle-tx', '${ledgerId}', 'expense', 1250, 'groceries', 'Lifecycle',
+      '2026-08-01', 0, NULL, NULL, '${CONTEXT.nowIso}', '${CONTEXT.nowIso}'
+    );
+    INSERT INTO budget_plans(
+      ledger_id, category_id, month, limit_minor, rollover_policy, updated_at
+    ) VALUES
+      ('${ledgerId}', 'groceries', '2026-08', 50000, 'none', '${CONTEXT.nowIso}'),
+      ('${ledgerId}', 'housing', '2026-09', 150000, 'carry_unused', '${CONTEXT.nowIso}');
+    INSERT INTO recurring_templates(
+      id, ledger_id, description, category_id, amount_minor, due_day, start_month,
+      end_month, enabled, created_at, updated_at
+    ) VALUES(
+      'lifecycle-template', '${ledgerId}', 'Utilities', 'utilities', 6500, 15,
+      '2026-08', NULL, 1, '${CONTEXT.nowIso}', '${CONTEXT.nowIso}'
+    );
+    INSERT INTO expected_occurrences(
+      id, template_id, due_on, transaction_id, created_at, updated_at
+    ) VALUES(
+      'lifecycle-occurrence', 'lifecycle-template', '2026-08-15', 'lifecycle-tx',
+      '${CONTEXT.nowIso}', '${CONTEXT.nowIso}'
+    );
+    INSERT INTO savings_goals(
+      id, ledger_id, name, target_minor, target_on, archived_at, created_at, updated_at
+    ) VALUES(
+      'lifecycle-goal', '${ledgerId}', 'Emergency', 300000, NULL, NULL,
+      '${CONTEXT.nowIso}', '${CONTEXT.nowIso}'
+    );
+    INSERT INTO goal_contributions(
+      id, goal_id, amount_minor, occurred_on, note, created_at
+    ) VALUES(
+      'lifecycle-contribution', 'lifecycle-goal', 25000, '2026-08-02', 'Initial',
+      '${CONTEXT.nowIso}'
+    );
+  `);
+}
+
+async function financeRowCounts(database: MigrationDatabase): Promise<Record<string, number>> {
+  const tables = [
+    'transactions',
+    'budget_plans',
+    'recurring_templates',
+    'expected_occurrences',
+    'savings_goals',
+    'goal_contributions',
+  ] as const;
+  const counts: Record<string, number> = {};
+  for (const table of tables) {
+    const row = await database.first<{ count: number }>(`SELECT count(*) AS count FROM ${table}`);
+    counts[table] = row?.count ?? -1;
+  }
+  return counts;
+}
+
 describe('ordered SQLite migrations', () => {
   let directory: string;
   let filename: string;
@@ -325,7 +449,10 @@ describe('ordered SQLite migrations', () => {
 
   it.each<FixtureVersion>([
     'pristine-v0',
+    'full-v0',
+    'missing-index-v0',
     'transactions-v0',
+    'transactions-missing-index-v0',
     'budgets-v0',
     'v1',
     'v2',
@@ -340,15 +467,42 @@ describe('ordered SQLite migrations', () => {
     expect(await database.first<{ count: number }>('SELECT count(*) AS count FROM ledgers'))
       .toEqual({ count: 1 });
     const expectedTransactionCount = fixture === 'pristine-v0' || fixture === 'budgets-v0' ? 0 : 3;
-    const expectedBudgetCount = fixture === 'pristine-v0' || fixture === 'transactions-v0' ? 0 : 2;
+    const expectedBudgetCount = fixture === 'pristine-v0'
+      || fixture === 'transactions-v0'
+      || fixture === 'transactions-missing-index-v0'
+      ? 0
+      : 2;
     expect(await database.first('SELECT count(*) AS count FROM transactions'))
       .toEqual({ count: expectedTransactionCount });
     expect(await database.first('SELECT count(*) AS count FROM budget_plans'))
       .toEqual({ count: expectedBudgetCount });
     if (fixture === 'v2' || fixture === 'v3' || fixture === 'v4') {
-      expect(await database.all('SELECT id FROM ledgers')).toEqual([
-        { id: '30000000-0000-4000-8000-000000000003' },
-      ]);
+      expect(await database.all('SELECT * FROM ledgers')).toEqual([{
+        id: '30000000-0000-4000-8000-000000000003',
+        name: 'Personal',
+        currency_code: 'USD',
+        currency_minor_unit: 2,
+        created_at: '2026-05-01T00:00:00.000Z',
+        updated_at: '2026-05-01T00:00:00.000Z',
+      }]);
+      expect(await database.all(
+        `SELECT id, ledger_id, kind, amount_minor, category_id, description, occurred_on,
+                legacy_recurring, source_template_id, source_due_on, created_at, updated_at
+         FROM transactions WHERE id = 'tx-coffee'`,
+      )).toEqual([{
+        id: 'tx-coffee',
+        ledger_id: '30000000-0000-4000-8000-000000000003',
+        kind: 'expense',
+        amount_minor: 7550,
+        category_id: 'groceries',
+        description: 'Café Coffee Shop',
+        occurred_on: '2026-08-02',
+        legacy_recurring: 0,
+        source_template_id: null,
+        source_due_on: null,
+        created_at: '2026-08-02T09:00:00.000Z',
+        updated_at: '2026-08-02T09:30:00.000Z',
+      }]);
     }
     if (fixture === 'v3' || fixture === 'v4') {
       expect(await database.all(
@@ -497,6 +651,17 @@ describe('ordered SQLite migrations', () => {
     expect(await logicalDigest(database)).toBe(before);
   });
 
+  it.each(['v1', 'v2', 'v3', 'v4'] as const)(
+    'rejects an altered compatible-name frozen %s schema without changing it',
+    async (fixture) => {
+      await createFixture(database, fixture);
+      await alterCompatibleNamedFrozenFixture(database, fixture);
+      const before = await logicalDigest(database);
+      await expect(runMigrations(database, CONTEXT)).rejects.toThrow(/incompatible|unsupported/i);
+      expect(await logicalDigest(database)).toBe(before);
+    },
+  );
+
   it('migrates one and max-safe legacy money values exactly', async () => {
     await database.exec(SHIPPED_V1_SQL);
     await database.run(
@@ -628,6 +793,23 @@ describe('ordered SQLite migrations', () => {
       [term],
     );
     expect(await search('coffee')).toEqual([{ id: 'tx-coffee' }]);
+    await database.run(
+      `INSERT INTO transactions(
+        id, ledger_id, kind, amount_minor, category_id, description, occurred_on,
+        legacy_recurring, source_template_id, source_due_on, created_at, updated_at
+      ) VALUES('tx-post-migration', ?, 'expense', 450, 'groceries', 'Harbor Bakery',
+        '2026-08-04', 0, NULL, NULL, ?, ?)`,
+      [CONTEXT.legacyLedgerId, CONTEXT.nowIso, CONTEXT.nowIso],
+    );
+    expect(await search('bakery')).toEqual([{ id: 'tx-post-migration' }]);
+    await database.run(
+      'UPDATE transactions SET description = ? WHERE id = ?',
+      ['River Market', 'tx-post-migration'],
+    );
+    expect(await search('bakery')).toEqual([]);
+    expect(await search('river')).toEqual([{ id: 'tx-post-migration' }]);
+    await database.run('DELETE FROM transactions WHERE id = ?', ['tx-post-migration']);
+    expect(await search('river')).toEqual([]);
     await database.run('UPDATE transactions SET description = ? WHERE id = ?', ['Neighborhood Roastery', 'tx-coffee']);
     expect(await search('coffee')).toEqual([]);
     expect(await search('roastery')).toEqual([{ id: 'tx-coffee' }]);
@@ -653,12 +835,20 @@ describe('ordered SQLite migrations', () => {
   it.each([
     'INSERT INTO ledgers',
     'CREATE TABLE transactions_v2',
+    'INSERT INTO transactions_v2',
     'DROP TABLE transactions',
+    'CREATE INDEX transactions_ledger_order',
     'CREATE VIRTUAL TABLE transaction_fts',
+    'CREATE TRIGGER transactions_fts_insert',
     "VALUES('rebuild')",
+    'PRAGMA user_version = 2',
     'CREATE TABLE recurring_templates',
+    'PRAGMA user_version = 3',
     'CREATE TABLE budget_plans',
+    'INSERT INTO budget_plans',
     'DROP TABLE budgets',
+    'CREATE TABLE savings_goals',
+    'PRAGMA user_version = 4',
   ])('rolls back schema, identity, version, and content when failure occurs after %s', async (needle) => {
     await createFixture(database, 'v1');
     const before = await logicalDigest(database);
@@ -717,5 +907,110 @@ describe('ordered SQLite migrations', () => {
         updatedAt: '2026-08-01T12:00:00.000Z',
       },
     ]);
+  });
+
+  it('deletes every ledger-owned finance row atomically without SET NULL residue', async () => {
+    const repository = new SQLiteFinanceRepository(expoDatabaseFrom(database) as never, CONTEXT);
+    await repository.initialize();
+    await seedEveryFinanceTable(database, CONTEXT.legacyLedgerId);
+
+    await repository.deleteAll();
+
+    expect(await financeRowCounts(database)).toEqual({
+      transactions: 0,
+      budget_plans: 0,
+      recurring_templates: 0,
+      expected_occurrences: 0,
+      savings_goals: 0,
+      goal_contributions: 0,
+    });
+    expect(await database.all('PRAGMA foreign_key_check')).toEqual([]);
+  });
+
+  it('rolls back complete deletion when a later lifecycle delete fails', async () => {
+    const source = expoDatabaseFrom(database);
+    const repository = new SQLiteFinanceRepository(source as never, CONTEXT);
+    await repository.initialize();
+    await seedEveryFinanceTable(database, CONTEXT.legacyLedgerId);
+    const before = await logicalDigest(database);
+    const originalRun = source.runAsync as (
+      sql: string,
+      ...params: readonly unknown[]
+    ) => Promise<unknown>;
+    source.runAsync = async (sql: string, ...params: readonly unknown[]) => {
+      const result = await originalRun(sql, ...params);
+      if (sql.includes('DELETE FROM recurring_templates')) {
+        throw new Error('Injected lifecycle deletion failure.');
+      }
+      return result;
+    };
+
+    await expect(repository.deleteAll()).rejects.toThrow('Injected lifecycle deletion failure');
+    expect(await logicalDigest(database)).toBe(before);
+  });
+
+  it('replaces the complete finance lifecycle while preserving the snapshot contract', async () => {
+    let clock = new Date(2026, 8, 1, 12, 0, 0);
+    const repository = new SQLiteFinanceRepository(
+      expoDatabaseFrom(database) as never,
+      CONTEXT,
+      () => clock,
+    );
+    await repository.initialize();
+    await seedEveryFinanceTable(database, CONTEXT.legacyLedgerId);
+    await repository.replaceAll({
+      transactions: [{
+        id: 'replacement-tx',
+        kind: 'expense',
+        amountCents: 3200,
+        categoryId: 'groceries',
+        description: 'Replacement',
+        occurredOn: '2026-09-01',
+        isRecurring: false,
+        createdAt: '2026-09-01T12:00:00.000Z',
+        updatedAt: '2026-09-01T12:00:00.000Z',
+      }],
+      budgets: [{
+        categoryId: 'groceries',
+        limitCents: 64000,
+        updatedAt: '2026-09-01T12:00:00.000Z',
+      }],
+    });
+
+    expect(await financeRowCounts(database)).toEqual({
+      transactions: 1,
+      budget_plans: 1,
+      recurring_templates: 0,
+      expected_occurrences: 0,
+      savings_goals: 0,
+      goal_contributions: 0,
+    });
+    expect(await database.all('SELECT id FROM transactions')).toEqual([{ id: 'replacement-tx' }]);
+    expect(await database.all('SELECT category_id, month, limit_minor FROM budget_plans')).toEqual([{
+      category_id: 'groceries',
+      month: '2026-09',
+      limit_minor: 64000,
+    }]);
+    clock = new Date(2026, 8, 2, 12, 0, 0);
+  });
+
+  it('derives the active local budget month per operation across an open-app month boundary', async () => {
+    let clock = new Date(2026, 7, 31, 23, 59, 59);
+    const repository = new SQLiteFinanceRepository(
+      expoDatabaseFrom(database) as never,
+      CONTEXT,
+      () => clock,
+    );
+    await repository.initialize();
+    await repository.setBudget('groceries', 50000);
+    expect((await repository.listBudgets()).map((budget) => budget.categoryId)).toEqual(['groceries']);
+
+    clock = new Date(2026, 8, 1, 0, 0, 1);
+    expect(await repository.listBudgets()).toEqual([]);
+    await repository.setBudget('housing', 150000);
+    expect((await repository.listBudgets()).map((budget) => budget.categoryId)).toEqual(['housing']);
+
+    clock = new Date(2026, 7, 31, 23, 59, 59);
+    expect((await repository.listBudgets()).map((budget) => budget.categoryId)).toEqual(['groceries']);
   });
 });

@@ -15,7 +15,17 @@ type TableInfoRow = Readonly<{
   name: string;
   type: string;
   notnull: number;
+  dflt_value: string | number | null;
   pk: number;
+}>;
+
+type ForeignKeyRow = Readonly<{
+  table: string;
+  from: string;
+  to: string;
+  on_update: string;
+  on_delete: string;
+  match: string;
 }>;
 
 const inflight = new WeakMap<MigrationDatabase, Promise<void>>();
@@ -124,7 +134,7 @@ const GOAL_CONTRIBUTIONS = [
 ] as const;
 
 function normalizeSql(sql: string | null): string {
-  return (sql ?? '').toLowerCase().replace(/\s+/g, '');
+  return (sql ?? '').toLowerCase().replace(/[\s;]/g, '');
 }
 
 function validateMigrationCatalog(): void {
@@ -177,11 +187,37 @@ async function assertColumns(
   database: MigrationDatabase,
   table: string,
   expected: readonly string[],
+  expectedDefaults: Readonly<Record<string, string>> = {},
 ): Promise<void> {
   const rows = await database.all<TableInfoRow>(`PRAGMA table_info("${table}")`);
   const actual = rows.map((row) => `${row.name}:${row.type.toUpperCase()}:${row.notnull}:${row.pk}`);
   if (actual.length !== expected.length || actual.some((item, index) => item !== expected[index])) {
     throw new Error(`Incompatible SQLite ${table} structure.`);
+  }
+  for (const row of rows) {
+    const expectedDefault = expectedDefaults[row.name] ?? null;
+    const actualDefault = row.dflt_value === null ? null : normalizeSql(String(row.dflt_value));
+    if (actualDefault !== expectedDefault) {
+      throw new Error(`Incompatible SQLite ${table} column defaults.`);
+    }
+  }
+}
+
+async function assertForeignKeys(
+  database: MigrationDatabase,
+  table: string,
+  expected: readonly string[],
+): Promise<void> {
+  const rows = await database.all<ForeignKeyRow>(`PRAGMA foreign_key_list("${table}")`);
+  const actual = rows.map((row) => (
+    `${row.from}->${row.table}.${row.to}:${row.on_update}:${row.on_delete}:${row.match}`
+  )).sort();
+  const sortedExpected = [...expected].sort();
+  if (
+    actual.length !== sortedExpected.length
+    || actual.some((item, index) => item !== sortedExpected[index])
+  ) {
+    throw new Error(`Incompatible SQLite ${table} foreign keys.`);
   }
 }
 
@@ -214,6 +250,12 @@ function objectSql(rows: readonly MasterRow[], type: MasterRow['type'], name: st
 function assertSqlFragments(sql: string, table: string, fragments: readonly string[]): void {
   if (fragments.some((fragment) => !sql.includes(normalizeSql(fragment)))) {
     throw new Error(`Incompatible SQLite ${table} constraints.`);
+  }
+}
+
+function assertSqlEquals(sql: string, object: string, expected: string): void {
+  if (sql !== normalizeSql(expected)) {
+    throw new Error(`Incompatible SQLite ${object} definition.`);
   }
 }
 
@@ -256,17 +298,28 @@ const PLANNING_OBJECTS = [
 async function assertV1Tables(database: MigrationDatabase, rows: readonly MasterRow[]): Promise<void> {
   await assertColumns(database, 'transactions', V1_TRANSACTIONS);
   await assertColumns(database, 'budgets', V1_BUDGETS);
+  await assertForeignKeys(database, 'transactions', []);
+  await assertForeignKeys(database, 'budgets', []);
   assertSqlFragments(tableSql(rows, 'transactions'), 'transactions', [
     "check(kindin('income','expense'))",
     'check(amount_cents>0)',
     'check(is_recurringin(0,1))',
   ]);
   assertSqlFragments(tableSql(rows, 'budgets'), 'budgets', ['check(limit_cents>0)']);
+  assertSqlEquals(
+    objectSql(rows, 'index', 'transactions_occurred_on'),
+    'transactions_occurred_on',
+    'CREATE INDEX transactions_occurred_on ON transactions(occurred_on DESC, created_at DESC)',
+  );
 }
 
 async function assertV2Tables(database: MigrationDatabase, rows: readonly MasterRow[]): Promise<void> {
   await assertColumns(database, 'ledgers', LEDGERS);
-  await assertColumns(database, 'transactions', TRANSACTIONS);
+  await assertColumns(database, 'transactions', TRANSACTIONS, { legacy_recurring: '0' });
+  await assertForeignKeys(database, 'ledgers', []);
+  await assertForeignKeys(database, 'transactions', [
+    'ledger_id->ledgers.id:NO ACTION:CASCADE:NONE',
+  ]);
   assertSqlFragments(tableSql(rows, 'ledgers'), 'ledgers', [
     'length(name)between1and60',
     "currency_codeglob'[a-z][a-z][a-z]'",
@@ -280,58 +333,128 @@ async function assertV2Tables(database: MigrationDatabase, rows: readonly Master
     'check(legacy_recurringin(0,1))',
     'unique(source_template_id,source_due_on)',
   ]);
-  assertSqlFragments(tableSql(rows, 'transaction_fts'), 'transaction_fts', [
-    "usingfts5(description,category_id,content='transactions',content_rowid='rowid'",
-  ]);
-  assertSqlFragments(objectSql(rows, 'index', 'transactions_ledger_order'), 'transactions_ledger_order', [
-    'ontransactions(ledger_id,occurred_ondesc,created_atdesc,iddesc)',
-  ]);
-  assertSqlFragments(objectSql(rows, 'index', 'transactions_ledger_month_kind'), 'transactions_ledger_month_kind', [
-    'ontransactions(ledger_id,occurred_on,kind,category_id)',
-  ]);
-  assertSqlFragments(objectSql(rows, 'trigger', 'transactions_fts_insert'), 'transactions_fts_insert', [
-    'afterinsertontransactions',
-    'insertintotransaction_fts(rowid,description,category_id)values(new.rowid,new.description,new.category_id)',
-  ]);
-  assertSqlFragments(objectSql(rows, 'trigger', 'transactions_fts_delete'), 'transactions_fts_delete', [
-    'afterdeleteontransactions',
-    "values('delete',old.rowid,old.description,old.category_id)",
-  ]);
-  assertSqlFragments(objectSql(rows, 'trigger', 'transactions_fts_update'), 'transactions_fts_update', [
-    'afterupdateontransactions',
-    "values('delete',old.rowid,old.description,old.category_id)",
-    'values(new.rowid,new.description,new.category_id)',
-  ]);
+  assertSqlEquals(
+    tableSql(rows, 'transaction_fts'),
+    'transaction_fts',
+    `CREATE VIRTUAL TABLE transaction_fts USING fts5(
+      description, category_id, content='transactions', content_rowid='rowid',
+      tokenize='unicode61 remove_diacritics 2'
+    )`,
+  );
+  assertSqlEquals(
+    objectSql(rows, 'index', 'transactions_ledger_order'),
+    'transactions_ledger_order',
+    `CREATE INDEX transactions_ledger_order
+      ON transactions(ledger_id, occurred_on DESC, created_at DESC, id DESC)`,
+  );
+  assertSqlEquals(
+    objectSql(rows, 'index', 'transactions_ledger_month_kind'),
+    'transactions_ledger_month_kind',
+    `CREATE INDEX transactions_ledger_month_kind
+      ON transactions(ledger_id, occurred_on, kind, category_id)`,
+  );
+  assertSqlEquals(
+    objectSql(rows, 'trigger', 'transactions_fts_insert'),
+    'transactions_fts_insert',
+    `CREATE TRIGGER transactions_fts_insert AFTER INSERT ON transactions BEGIN
+      INSERT INTO transaction_fts(rowid, description, category_id)
+        VALUES(new.rowid, new.description, new.category_id);
+    END`,
+  );
+  assertSqlEquals(
+    objectSql(rows, 'trigger', 'transactions_fts_delete'),
+    'transactions_fts_delete',
+    `CREATE TRIGGER transactions_fts_delete AFTER DELETE ON transactions BEGIN
+      INSERT INTO transaction_fts(transaction_fts, rowid, description, category_id)
+        VALUES('delete', old.rowid, old.description, old.category_id);
+    END`,
+  );
+  assertSqlEquals(
+    objectSql(rows, 'trigger', 'transactions_fts_update'),
+    'transactions_fts_update',
+    `CREATE TRIGGER transactions_fts_update AFTER UPDATE ON transactions BEGIN
+      INSERT INTO transaction_fts(transaction_fts, rowid, description, category_id)
+        VALUES('delete', old.rowid, old.description, old.category_id);
+      INSERT INTO transaction_fts(rowid, description, category_id)
+        VALUES(new.rowid, new.description, new.category_id);
+    END`,
+  );
   const ledgerCount = await database.first<{ count: number }>('SELECT count(*) AS count FROM ledgers');
   if (ledgerCount?.count !== 1) throw new Error('Incompatible SQLite ledger identity state.');
+  const ledger = await database.first<{
+    id: string;
+    name: string;
+    currency_code: string;
+    currency_minor_unit: number;
+  }>('SELECT id, name, currency_code, currency_minor_unit FROM ledgers');
+  if (
+    !ledger
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(ledger.id)
+    || ledger.name !== 'Personal'
+    || ledger.currency_code !== 'USD'
+    || ledger.currency_minor_unit !== 2
+  ) {
+    throw new Error('Incompatible SQLite canonical ledger row.');
+  }
 }
 
 async function assertV3Tables(database: MigrationDatabase, rows: readonly MasterRow[]): Promise<void> {
-  await assertColumns(database, 'recurring_templates', RECURRING_TEMPLATES);
+  await assertColumns(database, 'recurring_templates', RECURRING_TEMPLATES, { enabled: '1' });
   await assertColumns(database, 'expected_occurrences', EXPECTED_OCCURRENCES);
+  await assertForeignKeys(database, 'recurring_templates', [
+    'ledger_id->ledgers.id:NO ACTION:CASCADE:NONE',
+  ]);
+  await assertForeignKeys(database, 'expected_occurrences', [
+    'template_id->recurring_templates.id:NO ACTION:CASCADE:NONE',
+    'transaction_id->transactions.id:NO ACTION:SET NULL:NONE',
+  ]);
   assertSqlFragments(tableSql(rows, 'recurring_templates'), 'recurring_templates', [
     'referencesledgers(id)ondeletecascade',
+    'length(description)between1and120',
     "typeof(amount_minor)='integer'",
     'amount_minorbetween1and9007199254740991',
     'check(due_daybetween1and31)',
+    'check(enabledin(0,1))',
   ]);
   assertSqlFragments(tableSql(rows, 'expected_occurrences'), 'expected_occurrences', [
     'referencesrecurring_templates',
     'unique(template_id,due_on)',
   ]);
+  assertSqlEquals(
+    objectSql(rows, 'index', 'recurring_templates_ledger_enabled'),
+    'recurring_templates_ledger_enabled',
+    `CREATE INDEX recurring_templates_ledger_enabled
+      ON recurring_templates(ledger_id, enabled, start_month)`,
+  );
+  assertSqlEquals(
+    objectSql(rows, 'index', 'expected_occurrences_due'),
+    'expected_occurrences_due',
+    'CREATE INDEX expected_occurrences_due ON expected_occurrences(due_on, template_id)',
+  );
 }
 
 async function assertV4Tables(database: MigrationDatabase, rows: readonly MasterRow[]): Promise<void> {
-  await assertColumns(database, 'budget_plans', BUDGET_PLANS);
+  await assertColumns(database, 'budget_plans', BUDGET_PLANS, { rollover_policy: "'none'" });
   await assertColumns(database, 'savings_goals', SAVINGS_GOALS);
-  await assertColumns(database, 'goal_contributions', GOAL_CONTRIBUTIONS);
+  await assertColumns(database, 'goal_contributions', GOAL_CONTRIBUTIONS, { note: "''" });
+  await assertForeignKeys(database, 'budget_plans', [
+    'ledger_id->ledgers.id:NO ACTION:CASCADE:NONE',
+  ]);
+  await assertForeignKeys(database, 'savings_goals', [
+    'ledger_id->ledgers.id:NO ACTION:CASCADE:NONE',
+  ]);
+  await assertForeignKeys(database, 'goal_contributions', [
+    'goal_id->savings_goals.id:NO ACTION:CASCADE:NONE',
+  ]);
   assertSqlFragments(tableSql(rows, 'budget_plans'), 'budget_plans', [
     'referencesledgers(id)ondeletecascade',
     "typeof(limit_minor)='integer'",
     'limit_minorbetween0and9007199254740991',
+    "check(rollover_policyin('none','carry_unused'))",
   ]);
   assertSqlFragments(tableSql(rows, 'savings_goals'), 'savings_goals', [
     'referencesledgers(id)ondeletecascade',
+    'length(name)between1and80',
     "typeof(target_minor)='integer'",
     'target_minorbetween1and9007199254740991',
   ]);
@@ -340,6 +463,23 @@ async function assertV4Tables(database: MigrationDatabase, rows: readonly Master
     "typeof(amount_minor)='integer'",
     'amount_minorbetween0and9007199254740991',
   ]);
+  assertSqlEquals(
+    objectSql(rows, 'index', 'budget_plans_ledger_month'),
+    'budget_plans_ledger_month',
+    'CREATE INDEX budget_plans_ledger_month ON budget_plans(ledger_id, month, category_id)',
+  );
+  assertSqlEquals(
+    objectSql(rows, 'index', 'savings_goals_active_name'),
+    'savings_goals_active_name',
+    `CREATE UNIQUE INDEX savings_goals_active_name
+      ON savings_goals(ledger_id, lower(name)) WHERE archived_at IS NULL`,
+  );
+  assertSqlEquals(
+    objectSql(rows, 'index', 'goal_contributions_goal_order'),
+    'goal_contributions_goal_order',
+    `CREATE INDEX goal_contributions_goal_order
+      ON goal_contributions(goal_id, occurred_on DESC, created_at DESC, id DESC)`,
+  );
 }
 
 async function validateStructure(database: MigrationDatabase, version: number): Promise<void> {
@@ -383,12 +523,16 @@ async function validateStructure(database: MigrationDatabase, version: number): 
   if (version === 2) {
     assertObjectSet(rows, CORE_V2_OBJECTS);
     await assertColumns(database, 'budgets', V1_BUDGETS);
+    await assertForeignKeys(database, 'budgets', []);
+    assertSqlFragments(tableSql(rows, 'budgets'), 'budgets', ['check(limit_cents>0)']);
     await assertV2Tables(database, rows);
     return;
   }
   if (version === 3) {
     assertObjectSet(rows, [...CORE_V2_OBJECTS, ...RECURRING_OBJECTS]);
     await assertColumns(database, 'budgets', V1_BUDGETS);
+    await assertForeignKeys(database, 'budgets', []);
+    assertSqlFragments(tableSql(rows, 'budgets'), 'budgets', ['check(limit_cents>0)']);
     await assertV2Tables(database, rows);
     await assertV3Tables(database, rows);
     return;
