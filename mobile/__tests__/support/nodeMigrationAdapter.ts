@@ -1,13 +1,16 @@
 import { DatabaseSync } from 'node:sqlite';
 
+import { sqliteDatabaseIdentity } from '../../src/data/configureConnection';
 import type { MigrationDatabase } from '../../src/data/migrations/types';
 
 type BindValue = string | number | null;
 
 export class NodeMigrationAdapter implements MigrationDatabase {
   private readonly database: DatabaseSync;
+  readonly identity: string;
 
   constructor(readonly filename: string) {
+    this.identity = sqliteDatabaseIdentity(filename);
     this.database = new DatabaseSync(filename, {
       enableForeignKeyConstraints: false,
       timeout: 50,
@@ -48,6 +51,7 @@ export class NodeMigrationAdapter implements MigrationDatabase {
 
   private transactionView(): MigrationDatabase {
     return {
+      identity: this.identity,
       exec: this.exec,
       run: this.run,
       first: this.first,

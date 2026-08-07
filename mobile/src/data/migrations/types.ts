@@ -1,6 +1,7 @@
 export type MigrationBindValue = string | number | null;
 
 export interface MigrationDatabase {
+  readonly identity: string;
   exec(sql: string): Promise<void>;
   run(sql: string, params?: readonly MigrationBindValue[]): Promise<void>;
   first<T>(sql: string, params?: readonly MigrationBindValue[]): Promise<T | null>;

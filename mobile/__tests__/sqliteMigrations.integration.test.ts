@@ -2,6 +2,10 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
+jest.mock('expo-crypto', () => ({
+  randomUUID: () => '90000000-0000-4000-8000-000000000009',
+}));
+
 import { LATEST_SCHEMA_VERSION, runMigrations } from '../src/data/migrations';
 import type { MigrationContext, MigrationDatabase } from '../src/data/migrations/types';
 import { SQLiteFinanceRepository } from '../src/data/financeRepository';
@@ -308,6 +312,7 @@ async function logicalDigest(database: MigrationDatabase): Promise<string> {
 function failureAfter(database: MigrationDatabase, needle: string): MigrationDatabase {
   let injected = false;
   const wrap = (transaction: MigrationDatabase): MigrationDatabase => ({
+    identity: transaction.identity,
     exec: async (sql) => {
       await transaction.exec(sql);
       if (!injected && sql.includes(needle)) {
@@ -329,6 +334,7 @@ function failureAfter(database: MigrationDatabase, needle: string): MigrationDat
     },
   });
   return {
+    identity: database.identity,
     exec: database.exec,
     run: database.run,
     first: database.first,
@@ -345,6 +351,9 @@ function expoDatabaseFrom(database: MigrationDatabase, allowExclusive = true): R
     return params as readonly (string | number | null)[];
   };
   const source: Record<string, unknown> = {
+    databasePath: database instanceof NodeMigrationAdapter
+      ? database.filename
+      : '/tests/finova-transaction-view.sqlite',
     execAsync: database.exec,
     runAsync: async (sql: string, ...params: readonly unknown[]) => {
       await database.run(sql, boundParams(params));
@@ -429,6 +438,18 @@ async function financeRowCounts(database: MigrationDatabase): Promise<Record<str
     counts[table] = row?.count ?? -1;
   }
   return counts;
+}
+
+function deferred(): Readonly<{ promise: Promise<void>; resolve(): void }> {
+  let resolve!: () => void;
+  const promise = new Promise<void>((settle) => { resolve = settle; });
+  return { promise, resolve };
+}
+
+async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 describe('ordered SQLite migrations', () => {
@@ -533,28 +554,49 @@ describe('ordered SQLite migrations', () => {
     }
     if (fixture === 'v4') {
       expect(await database.all(
-        'SELECT category_id, month, limit_minor FROM budget_plans ORDER BY category_id',
+        `SELECT ledger_id, category_id, month, limit_minor, rollover_policy, updated_at
+         FROM budget_plans ORDER BY category_id`,
       )).toEqual([
-        { category_id: 'groceries', month: '2026-05', limit_minor: 50000 },
-        { category_id: 'housing', month: '2026-05', limit_minor: 150000 },
+        {
+          ledger_id: '30000000-0000-4000-8000-000000000003',
+          category_id: 'groceries',
+          month: '2026-05',
+          limit_minor: 50000,
+          rollover_policy: 'none',
+          updated_at: '2026-08-01T11:00:00.000Z',
+        },
+        {
+          ledger_id: '30000000-0000-4000-8000-000000000003',
+          category_id: 'housing',
+          month: '2026-05',
+          limit_minor: 150000,
+          rollover_policy: 'none',
+          updated_at: '2026-08-01T12:00:00.000Z',
+        },
       ]);
       expect(await database.all(
-        'SELECT id, name, target_minor, target_on, archived_at FROM savings_goals',
+        `SELECT id, ledger_id, name, target_minor, target_on, archived_at, created_at, updated_at
+         FROM savings_goals`,
       )).toEqual([{
         id: 'frozen-goal',
+        ledger_id: '30000000-0000-4000-8000-000000000003',
         name: 'Emergency fund',
         target_minor: 300000,
         target_on: null,
         archived_at: null,
+        created_at: '2026-05-01T00:00:00.000Z',
+        updated_at: '2026-05-01T00:00:00.000Z',
       }]);
       expect(await database.all(
-        'SELECT id, goal_id, amount_minor, occurred_on, note FROM goal_contributions',
+        `SELECT id, goal_id, amount_minor, occurred_on, note, created_at
+         FROM goal_contributions`,
       )).toEqual([{
         id: 'frozen-contribution',
         goal_id: 'frozen-goal',
         amount_minor: 25000,
         occurred_on: '2026-05-02',
         note: 'Initial',
+        created_at: '2026-05-02T00:00:00.000Z',
       }]);
     }
     await runMigrations(database, SECOND_CONTEXT);
@@ -661,6 +703,50 @@ describe('ordered SQLite migrations', () => {
       expect(await logicalDigest(database)).toBe(before);
     },
   );
+
+  it('rejects a weakened v1 CHECK even when a comment contains the expected fragment', async () => {
+    await database.exec(SHIPPED_V1_SQL.replace(
+      'CHECK (amount_cents > 0)',
+      'CHECK (amount_cents > 0 OR 1) /* CHECK(amount_cents > 0) */',
+    ));
+    const before = await logicalDigest(database);
+
+    await expect(runMigrations(database, CONTEXT)).rejects.toThrow(/incompatible/i);
+    expect(await logicalDigest(database)).toBe(before);
+  });
+
+  it('rejects an appended restrictive CHECK on an otherwise compatible v1 table', async () => {
+    await database.exec(SHIPPED_V1_SQL.replace(
+      'updated_at TEXT NOT NULL\n);',
+      'updated_at TEXT NOT NULL,\n  CHECK(length(description) < 10)\n);',
+    ));
+    const before = await logicalDigest(database);
+
+    await expect(runMigrations(database, CONTEXT)).rejects.toThrow(/incompatible/i);
+    expect(await logicalDigest(database)).toBe(before);
+  });
+
+  it('rejects an altered literal default whose case changes frozen v4 semantics', async () => {
+    await createFixture(database, 'v3');
+    await database.exec(FROZEN_V4_DELTA_SQL.replace("DEFAULT 'none'", "DEFAULT 'NONE'"));
+    const before = await logicalDigest(database);
+
+    await expect(runMigrations(database, CONTEXT)).rejects.toThrow(/incompatible/i);
+    expect(await logicalDigest(database)).toBe(before);
+  });
+
+  it('rejects a same-name v0 index with an altered definition', async () => {
+    await database.exec(SHIPPED_V1_SQL);
+    await database.exec(`
+      DROP INDEX transactions_occurred_on;
+      CREATE INDEX transactions_occurred_on ON transactions(created_at DESC);
+      PRAGMA user_version = 0;
+    `);
+    const before = await logicalDigest(database);
+
+    await expect(runMigrations(database, CONTEXT)).rejects.toThrow(/incompatible/i);
+    expect(await logicalDigest(database)).toBe(before);
+  });
 
   it('migrates one and max-safe legacy money values exactly', async () => {
     await database.exec(SHIPPED_V1_SQL);
@@ -820,7 +906,7 @@ describe('ordered SQLite migrations', () => {
               (SELECT count(*) FROM transaction_fts) AS fts_count`,
     )).toEqual({ content_count: 2, fts_count: 2 });
     await expect(database.exec(
-      "INSERT INTO transaction_fts(transaction_fts) VALUES('integrity-check')",
+      "INSERT INTO transaction_fts(transaction_fts, rank) VALUES('integrity-check', 1)",
     )).resolves.toBeUndefined();
     database.close();
     database = new NodeMigrationAdapter(filename);
@@ -857,7 +943,24 @@ describe('ordered SQLite migrations', () => {
     expect(await database.first('PRAGMA user_version')).toEqual({ user_version: 1 });
   });
 
-  it('single-flights concurrent initialization into exactly one ledger at v4', async () => {
+  it.each([
+    ['v2', 'CREATE TABLE expected_occurrences', 2],
+    ['v3', 'DROP TABLE budgets', 3],
+  ] as const)(
+    'rolls back an independently frozen %s source when failure occurs after %s',
+    async (fixture, needle, expectedVersion) => {
+      await createFixture(database, fixture);
+      const before = await logicalDigest(database);
+
+      await expect(runMigrations(failureAfter(database, needle), CONTEXT))
+        .rejects.toThrow('Injected after');
+      expect(await logicalDigest(database)).toBe(before);
+      expect(await database.first('PRAGMA user_version'))
+        .toEqual({ user_version: expectedVersion });
+    },
+  );
+
+  it('serializes concurrent initialization into exactly one ledger at v4', async () => {
     await Promise.all([
       runMigrations(database, CONTEXT),
       runMigrations(database, SECOND_CONTEXT),
@@ -949,6 +1052,133 @@ describe('ordered SQLite migrations', () => {
     expect(await logicalDigest(database)).toBe(before);
   });
 
+  it('restores transaction rows and external-content FTS when deletion fails after transaction removal', async () => {
+    const source = expoDatabaseFrom(database);
+    const repository = new SQLiteFinanceRepository(source as never, CONTEXT);
+    await repository.initialize();
+    await seedEveryFinanceTable(database, CONTEXT.legacyLedgerId);
+    const before = await logicalDigest(database);
+    const originalRun = source.runAsync as (
+      sql: string,
+      ...params: readonly unknown[]
+    ) => Promise<unknown>;
+    source.runAsync = async (sql: string, ...params: readonly unknown[]) => {
+      const result = await originalRun(sql, ...params);
+      if (sql.includes('DELETE FROM transactions')) {
+        throw new Error('Injected after transaction and FTS deletion.');
+      }
+      return result;
+    };
+
+    await expect(repository.deleteAll()).rejects.toThrow('Injected after transaction and FTS deletion');
+    expect(await logicalDigest(database)).toBe(before);
+    await expect(database.exec(
+      "INSERT INTO transaction_fts(transaction_fts, rank) VALUES('integrity-check', 1)",
+    )).resolves.toBeUndefined();
+  });
+
+  it('serializes createTransaction behind a successful deleteAll lifecycle transaction', async () => {
+    const source = expoDatabaseFrom(database);
+    const repository = new SQLiteFinanceRepository(source as never, CONTEXT);
+    await repository.initialize();
+    await seedEveryFinanceTable(database, CONTEXT.legacyLedgerId);
+    const deletionHeld = deferred();
+    const resumeDeletion = deferred();
+    const events: string[] = [];
+    const originalExec = source.execAsync as (sql: string) => Promise<void>;
+    source.execAsync = async (sql: string) => {
+      await originalExec(sql);
+      if (sql === 'COMMIT') events.push('delete-commit');
+    };
+    const originalRun = source.runAsync as (
+      sql: string,
+      ...params: readonly unknown[]
+    ) => Promise<unknown>;
+    source.runAsync = async (sql: string, ...params: readonly unknown[]) => {
+      const result = await originalRun(sql, ...params);
+      if (sql.includes('DELETE FROM transactions')) {
+        events.push('delete-held');
+        deletionHeld.resolve();
+        await resumeDeletion.promise;
+      } else if (sql.includes('INSERT INTO transactions')) {
+        events.push('create-write');
+      }
+      return result;
+    };
+
+    const deletion = repository.deleteAll();
+    await deletionHeld.promise;
+    let creationSettled = false;
+    const creation = repository.createTransaction({
+      kind: 'expense',
+      amountCents: 975,
+      categoryId: 'groceries',
+      description: 'Concurrent create',
+      occurredOn: '2026-08-07',
+      isRecurring: false,
+    }).then((value) => {
+      creationSettled = true;
+      return value;
+    });
+    await flushAsyncWork();
+    const settledBeforeLifecycleCommit = creationSettled;
+    resumeDeletion.resolve();
+    const [, created] = await Promise.all([deletion, creation]);
+
+    expect(settledBeforeLifecycleCommit).toBe(false);
+    expect(events.indexOf('delete-commit')).toBeLessThan(events.indexOf('create-write'));
+    expect(await database.all('SELECT id FROM transactions')).toEqual([{ id: created.id }]);
+  });
+
+  it('runs createTransaction after a failed deleteAll rollback instead of inside it', async () => {
+    const source = expoDatabaseFrom(database);
+    const repository = new SQLiteFinanceRepository(source as never, CONTEXT);
+    await repository.initialize();
+    await seedEveryFinanceTable(database, CONTEXT.legacyLedgerId);
+    const deletionHeld = deferred();
+    const failDeletion = deferred();
+    const originalRun = source.runAsync as (
+      sql: string,
+      ...params: readonly unknown[]
+    ) => Promise<unknown>;
+    source.runAsync = async (sql: string, ...params: readonly unknown[]) => {
+      const result = await originalRun(sql, ...params);
+      if (sql.includes('DELETE FROM transactions')) {
+        deletionHeld.resolve();
+        await failDeletion.promise;
+        throw new Error('Injected interleaved deletion failure.');
+      }
+      return result;
+    };
+
+    const deletion = repository.deleteAll();
+    const deletionRejected = expect(deletion).rejects.toThrow('Injected interleaved deletion failure');
+    await deletionHeld.promise;
+    let creationSettled = false;
+    const creation = repository.createTransaction({
+      kind: 'expense',
+      amountCents: 1475,
+      categoryId: 'groceries',
+      description: 'Created after rollback',
+      occurredOn: '2026-08-07',
+      isRecurring: false,
+    }).then((value) => {
+      creationSettled = true;
+      return value;
+    });
+    await flushAsyncWork();
+    const settledBeforeRollback = creationSettled;
+    failDeletion.resolve();
+    await deletionRejected;
+    const created = await creation;
+
+    expect(settledBeforeRollback).toBe(false);
+    expect(await database.first('SELECT count(*) AS count FROM transactions'))
+      .toEqual({ count: 2 });
+    expect(await database.first('SELECT id FROM transactions WHERE id = ?', [created.id]))
+      .toEqual({ id: created.id });
+  });
+
   it('replaces the complete finance lifecycle while preserving the snapshot contract', async () => {
     let clock = new Date(2026, 8, 1, 12, 0, 0);
     const repository = new SQLiteFinanceRepository(
@@ -992,6 +1222,211 @@ describe('ordered SQLite migrations', () => {
       limit_minor: 64000,
     }]);
     clock = new Date(2026, 8, 2, 12, 0, 0);
+  });
+
+  it('rolls back the original lifecycle when replaceAll insertion fails', async () => {
+    const source = expoDatabaseFrom(database);
+    const repository = new SQLiteFinanceRepository(source as never, CONTEXT);
+    await repository.initialize();
+    await seedEveryFinanceTable(database, CONTEXT.legacyLedgerId);
+    const before = await logicalDigest(database);
+    const originalRun = source.runAsync as (
+      sql: string,
+      ...params: readonly unknown[]
+    ) => Promise<unknown>;
+    source.runAsync = async (sql: string, ...params: readonly unknown[]) => {
+      const result = await originalRun(sql, ...params);
+      if (sql.includes('INSERT INTO transactions')) {
+        throw new Error('Injected replacement insertion failure.');
+      }
+      return result;
+    };
+
+    await expect(repository.replaceAll({
+      transactions: [{
+        id: 'failed-replacement',
+        kind: 'expense',
+        amountCents: 3200,
+        categoryId: 'groceries',
+        description: 'Failed replacement',
+        occurredOn: '2026-08-07',
+        isRecurring: false,
+        createdAt: CONTEXT.nowIso,
+        updatedAt: CONTEXT.nowIso,
+      }],
+      budgets: [],
+    })).rejects.toThrow('Injected replacement insertion failure');
+    expect(await logicalDigest(database)).toBe(before);
+  });
+
+  it('serializes setBudget behind a successful replaceAll lifecycle transaction', async () => {
+    const source = expoDatabaseFrom(database);
+    const repository = new SQLiteFinanceRepository(source as never, CONTEXT);
+    await repository.initialize();
+    await seedEveryFinanceTable(database, CONTEXT.legacyLedgerId);
+    const replacementHeld = deferred();
+    const resumeReplacement = deferred();
+    const originalRun = source.runAsync as (
+      sql: string,
+      ...params: readonly unknown[]
+    ) => Promise<unknown>;
+    source.runAsync = async (sql: string, ...params: readonly unknown[]) => {
+      const result = await originalRun(sql, ...params);
+      if (sql.includes('DELETE FROM transactions')) {
+        replacementHeld.resolve();
+        await resumeReplacement.promise;
+      }
+      return result;
+    };
+
+    const replacement = repository.replaceAll({
+      transactions: [],
+      budgets: [{
+        categoryId: 'groceries',
+        limitCents: 64000,
+        updatedAt: CONTEXT.nowIso,
+      }],
+    });
+    await replacementHeld.promise;
+    let budgetSettled = false;
+    const concurrentBudget = repository.setBudget('housing', 175000).then((value) => {
+      budgetSettled = true;
+      return value;
+    });
+    await flushAsyncWork();
+    const settledBeforeLifecycleCommit = budgetSettled;
+    resumeReplacement.resolve();
+    await Promise.all([replacement, concurrentBudget]);
+
+    expect(settledBeforeLifecycleCommit).toBe(false);
+    expect(await database.all(
+      `SELECT category_id, limit_minor FROM budget_plans
+       WHERE month = '2026-08' ORDER BY category_id`,
+    )).toEqual([
+      { category_id: 'groceries', limit_minor: 64000 },
+      { category_id: 'housing', limit_minor: 175000 },
+    ]);
+  });
+
+  it('serializes snapshot reads behind replaceAll so no partial lifecycle state is observable', async () => {
+    const source = expoDatabaseFrom(database);
+    const repository = new SQLiteFinanceRepository(source as never, CONTEXT);
+    await repository.initialize();
+    await seedEveryFinanceTable(database, CONTEXT.legacyLedgerId);
+    const replacementHeld = deferred();
+    const resumeReplacement = deferred();
+    const originalRun = source.runAsync as (
+      sql: string,
+      ...params: readonly unknown[]
+    ) => Promise<unknown>;
+    source.runAsync = async (sql: string, ...params: readonly unknown[]) => {
+      const result = await originalRun(sql, ...params);
+      if (sql.includes('DELETE FROM transactions')) {
+        replacementHeld.resolve();
+        await resumeReplacement.promise;
+      }
+      return result;
+    };
+
+    const replacement = repository.replaceAll({
+      transactions: [{
+        id: 'snapshot-replacement',
+        kind: 'expense',
+        amountCents: 8100,
+        categoryId: 'groceries',
+        description: 'Snapshot replacement',
+        occurredOn: '2026-08-07',
+        isRecurring: false,
+        createdAt: CONTEXT.nowIso,
+        updatedAt: CONTEXT.nowIso,
+      }],
+      budgets: [{
+        categoryId: 'groceries',
+        limitCents: 88000,
+        updatedAt: CONTEXT.nowIso,
+      }],
+    });
+    await replacementHeld.promise;
+    let snapshotSettled = false;
+    const snapshot = repository.snapshot().then((value) => {
+      snapshotSettled = true;
+      return value;
+    });
+    await flushAsyncWork();
+    const settledDuringPartialDeletion = snapshotSettled;
+    resumeReplacement.resolve();
+    await replacement;
+    const result = await snapshot;
+
+    expect(settledDuringPartialDeletion).toBe(false);
+    expect(result.transactions.map((transaction) => transaction.id))
+      .toEqual(['snapshot-replacement']);
+    expect(result.budgets).toEqual([{
+      categoryId: 'groceries',
+      limitCents: 88000,
+      updatedAt: CONTEXT.nowIso,
+    }]);
+  });
+
+  it('runs setBudget after a failed replaceAll insertion rollback instead of inside it', async () => {
+    const source = expoDatabaseFrom(database);
+    const repository = new SQLiteFinanceRepository(source as never, CONTEXT);
+    await repository.initialize();
+    await seedEveryFinanceTable(database, CONTEXT.legacyLedgerId);
+    const insertionHeld = deferred();
+    const failInsertion = deferred();
+    const originalRun = source.runAsync as (
+      sql: string,
+      ...params: readonly unknown[]
+    ) => Promise<unknown>;
+    source.runAsync = async (sql: string, ...params: readonly unknown[]) => {
+      const result = await originalRun(sql, ...params);
+      if (sql.includes('INSERT INTO transactions')) {
+        insertionHeld.resolve();
+        await failInsertion.promise;
+        throw new Error('Injected interleaved replacement failure.');
+      }
+      return result;
+    };
+
+    const replacement = repository.replaceAll({
+      transactions: [{
+        id: 'replacement-failure',
+        kind: 'expense',
+        amountCents: 3200,
+        categoryId: 'groceries',
+        description: 'Replacement failure',
+        occurredOn: '2026-08-07',
+        isRecurring: false,
+        createdAt: CONTEXT.nowIso,
+        updatedAt: CONTEXT.nowIso,
+      }],
+      budgets: [],
+    });
+    const replacementRejected = expect(replacement)
+      .rejects.toThrow('Injected interleaved replacement failure');
+    await insertionHeld.promise;
+    let budgetSettled = false;
+    const concurrentBudget = repository.setBudget('groceries', 99000).then((value) => {
+      budgetSettled = true;
+      return value;
+    });
+    await flushAsyncWork();
+    const settledBeforeRollback = budgetSettled;
+    failInsertion.resolve();
+    await replacementRejected;
+    await concurrentBudget;
+
+    expect(settledBeforeRollback).toBe(false);
+    expect(await database.first(
+      `SELECT limit_minor FROM budget_plans
+       WHERE ledger_id = ? AND category_id = 'groceries' AND month = '2026-08'`,
+      [CONTEXT.legacyLedgerId],
+    )).toEqual({ limit_minor: 99000 });
+    expect(await database.first('SELECT id FROM transactions WHERE id = ?', ['lifecycle-tx']))
+      .toEqual({ id: 'lifecycle-tx' });
+    expect(await database.first('SELECT id FROM transactions WHERE id = ?', ['replacement-failure']))
+      .toBeNull();
   });
 
   it('derives the active local budget month per operation across an open-app month boundary', async () => {
