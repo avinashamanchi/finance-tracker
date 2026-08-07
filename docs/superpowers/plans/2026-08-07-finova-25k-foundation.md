@@ -317,113 +317,200 @@ allowlist and inspect the cached diff before committing with
 `feat: add ordered SQLite migrations`. Do not stage the already-dirty mobile
 package files or any directory wholesale.
 
-### Task 3: Add ledger currency, keyset pagination, FTS, and SQL aggregates
+### Task 3: Add exact ledger money, bidirectional pagination, FTS, and bounded aggregates
 
 **Files:**
+- Create: `mobile/src/domain/errors.ts`
 - Modify: `mobile/src/domain/types.ts`
 - Replace: `mobile/src/domain/money.ts`
+- Modify: `mobile/src/domain/summaries.ts`
 - Create: `mobile/src/data/queryTypes.ts`
 - Create: `mobile/src/data/transactionQueries.ts`
 - Create: `mobile/src/data/aggregateQueries.ts`
+- Modify: `mobile/src/data/validation.ts`
 - Modify: `mobile/src/data/financeRepository.ts`
 - Modify: `mobile/src/data/inMemoryFinanceRepository.ts`
 - Refactor: `mobile/src/data/FinanceProvider.tsx`
-- Modify: `mobile/src/domain/summaries.ts`
+- Modify: `mobile/src/components/BudgetRow.tsx`
+- Modify: `mobile/src/components/TransactionRow.tsx`
+- Modify: `mobile/src/components/TrendBars.tsx`
+- Modify: `mobile/src/screens/BudgetsScreen.tsx`
+- Modify: `mobile/src/screens/HomeScreen.tsx`
+- Modify: `mobile/src/screens/InsightsScreen.tsx`
+- Modify: `mobile/src/screens/TransactionEditor.tsx`
+- Modify: `mobile/src/screens/TransactionsScreen.tsx`
+- Modify: `mobile/src/services/backup.ts`
+- Modify: `mobile/src/services/csv.ts`
 - Create: `mobile/__tests__/transactionQueries.integration.test.ts`
-- Modify: `mobile/__tests__/financeRepository.test.ts`
+- Create: `mobile/__tests__/aggregateQueries.integration.test.ts`
+- Modify: `mobile/__tests__/backup.test.ts`
+- Modify: `mobile/__tests__/budgetsFlow.test.tsx`
+- Modify: `mobile/__tests__/csv.test.ts`
+- Modify: `mobile/__tests__/dashboard.test.tsx`
 - Modify: `mobile/__tests__/financeProvider.test.tsx`
+- Modify: `mobile/__tests__/financeRepository.test.ts`
+- Modify: `mobile/__tests__/insights.test.tsx`
 - Modify: `mobile/__tests__/money.test.ts`
+- Modify: `mobile/__tests__/settingsFlow.test.tsx`
+- Modify: `mobile/__tests__/sqliteMigrations.integration.test.ts`
+- Modify: `mobile/__tests__/summaries.test.ts`
+- Modify: `mobile/__tests__/transactionsFlow.test.tsx`
+
+The allowlist is deliberately complete because the public money-field rename
+must not leave a duplicate cents/minor model. `BudgetsScreen`,
+`budgetsFlow.test.tsx`, and `settingsFlow.test.tsx` already contain unrelated
+user-owned release/billing work: stage only the Task 3 hunks in those files.
+Do not stage any package, App Store, legal, billing, or release-config path.
 
 **Interfaces:**
-- Consumes: schema version 4 and `Ledger { id; name; currencyCode; currencyMinorUnit; createdAt; updatedAt }`.
-- Produces: `listTransactionsPage(query: TransactionQuery): Promise<TransactionPage>`, `getMonthSummary(ledgerId: string, month: string): Promise<MonthSummary>`, `getSixMonthTrend(ledgerId: string, anchorMonth: string): Promise<readonly MonthlyPoint[]>`, and bounded `LedgerController` page state.
+- Consumes: reviewed schema version 4 and its immutable canonical ledger row.
+- Produces: exact `Ledger`, minor-unit domain types, `listTransactionsPage`,
+  `getMonthSummary`, `getSixMonthTrend`, and a bounded bidirectional controller
+  window.
+- Retains: backup wire version 1 with its historical `amountCents` and
+  `limitCents` keys. Import maps v1 cents to USD minor units and export maps the
+  new domain back to the byte-compatible v1 shape. Existing backups must not
+  break merely because internal field names improve.
 
-- [ ] **Step 1: Write failing pagination, search, aggregate, and controller tests**
+- [ ] **Step 1: Write failing exact-money, query, aggregate, compatibility, and controller tests**
+
+Add tests before production code for all of the following:
+
+- domain fields are only `amountMinor`, `limitMinor`, `incomeMinor`,
+  `expenseMinor`, and `balanceMinor`; no duplicate cents aliases remain;
+- parsing supports ledger minor units 0-3 and rejects fractional precision,
+  grouping errors, non-positive transaction values, and max-safe overflow;
+- formatting is exact at `Number.MAX_SAFE_INTEGER` (for USD it ends in `.91`,
+  never the rounded `.90` produced by dividing the number before `Intl`), works
+  for negative balances, and preserves locale currency placement;
+- version-1 backups round-trip their legacy cents keys byte-semantically while
+  the in-memory model uses minor units;
+- first/older/newer pages traverse at least 500 equal-key-heavy rows without
+  duplicate or skipped IDs, and the controller can move both directions while
+  retaining at most 200 contiguous rows;
+- malformed, overlong, wrong-version, wrong-ledger, wrong-filter, unsafe-date,
+  and wrong-direction cursors fail before SQL; concurrent insert/delete/update,
+  repeated pages, and stale first/older/newer responses cannot corrupt state;
+- Unicode search normalization, empty search, quote/operator injection, more
+  than eight tokens, and 80-code-point bounds are deterministic and query plans
+  use the intended order and FTS indexes;
+- exact aggregate fixtures include a raw SQLite `SUM` overflow, an exact
+  max-safe mathematical result, an over-max-safe result, and 100,001 rows.
+  Failures are typed, content-free `MoneyRangeError` or `LedgerCapacityError`.
+
+Run the focused suite and record the intended RED failures while the reviewed
+Task 2 migration suites remain green.
+
+- [ ] **Step 2: Define one ledger/minor-unit model and exact presentation**
 
 ```ts
-const first = await repository.listTransactionsPage({ ledgerId, limit: 50, kinds: [], search: '' });
-expect(first.items).toHaveLength(50);
-expect(first.nextCursor).toEqual(expect.any(String));
-const second = await repository.listTransactionsPage({ ledgerId, limit: 50, kinds: [], search: '', after: first.nextCursor });
-expect(new Set([...first.items, ...second.items].map(row => row.id)).size).toBe(100);
-expect(await repository.listTransactionsPage({ ledgerId, limit: 50, kinds: ['expense'], search: 'coffee shop' }))
-  .toMatchObject({ items: [expect.objectContaining({ description: 'Coffee Shop' })] });
-expect(await repository.getMonthSummary(ledgerId, '2026-08')).toMatchObject({ incomeMinor: 200000, expenseMinor: 7550, transactionCount: 3 });
+export type Ledger = Readonly<{
+  id: string;
+  name: string;
+  currencyCode: string;
+  currencyMinorUnit: 0 | 1 | 2 | 3;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
+export type TransactionCursor = string & {
+  readonly __transactionCursor: unique symbol;
+};
 ```
 
-Add a provider test that creates a transaction and expects `listTransactionsPage` plus affected aggregates to rerun while deprecated `listTransactions` and `snapshot` are not called.
+Rename every domain and consumer field from cents to minor units without
+converting stored integers. `parseMinorAmount(raw, minorUnit)` uses `BigInt`
+before returning a safe number. `formatMinor(value, ledger, locale?)` must never
+divide a max-safe integer through floating point; compose exact `BigInt`
+integer/fraction parts with `Intl.NumberFormat.formatToParts` so grouping,
+currency placement, sign, and 0-3 fraction digits remain locale-aware and
+cent-exact. Validate canonical UUID/date/timestamp/currency/minor-unit values at
+every mapped boundary.
 
-- [ ] **Step 2: Run the focused suite and verify red**
+The repository exposes the canonical ledger and enforces a technical cap of
+100,000 transaction rows for new inserts and replacement. Existing over-cap
+data remains deletable/exportable but bounded queries return a typed,
+content-free capacity error rather than crashing or silently truncating.
 
-Run: `cd mobile && npm test -- --runInBand __tests__/money.test.ts __tests__/transactionQueries.integration.test.ts __tests__/financeRepository.test.ts __tests__/financeProvider.test.tsx`
-
-Expected: FAIL on missing ledger/minor-unit/page interfaces and current full reload behavior.
-
-- [ ] **Step 3: Define exact page and money types**
+- [ ] **Step 3: Implement strict, filter-bound bidirectional keyset cursors**
 
 ```ts
-export type TransactionCursor = string & { readonly __transactionCursor: unique symbol };
 export type TransactionQuery = Readonly<{
   ledgerId: string;
   limit: 1 | 10 | 25 | 50;
   kinds: readonly TransactionKind[];
   search: string;
-  after?: TransactionCursor;
+  cursor?: TransactionCursor;
 }>;
-export type TransactionPage = Readonly<{ items: readonly Transaction[]; nextCursor: TransactionCursor | null }>;
-export type Ledger = Readonly<{ id: string; name: string; currencyCode: string; currencyMinorUnit: number; createdAt: string; updatedAt: string }>;
-```
 
-Rename domain fields `amountCents` to `amountMinor`, `limitCents` to `limitMinor`, and summary fields to `incomeMinor`, `expenseMinor`, and `balanceMinor`. Implement `parseMinorAmount(raw, minorUnit)` and `formatMinor(amountMinor, ledger, locale?)`; validate minor unit 0-3 and safe integers. Do not convert stored values.
-
-- [ ] **Step 4: Implement escaped FTS and keyset SQL**
-
-Normalize at most 80 Unicode code points into at most eight alphanumeric tokens; quote each token and append `*`. Bind the complete MATCH expression as a parameter. Encode/decode cursor JSON with Zod and base64url, containing only `occurredOn`, `createdAt`, and `id`.
-
-```sql
-WHERE t.ledger_id = ?
-  AND (? = '' OR t.rowid IN (SELECT rowid FROM transaction_fts WHERE transaction_fts MATCH ?))
-  AND (? IS NULL OR (t.occurred_on, t.created_at, t.id) < (?, ?, ?))
-ORDER BY t.occurred_on DESC, t.created_at DESC, t.id DESC
-LIMIT ?
-```
-
-Fetch `limit + 1`, return at most `limit`, and derive the next cursor from the last returned row only when an extra row exists.
-
-- [ ] **Step 5: Move summaries into bounded SQL**
-
-Use `SUM(CASE WHEN kind='income' THEN amount_minor ELSE 0 END)`, equivalent expense sum, `COUNT(*)`, and a grouped category query bounded by `occurred_on >= monthStart AND occurred_on < nextMonthStart`. Six-month insight is one grouped query over six bounded months followed by zero-filling missing months. Check every mapped total with `Number.isSafeInteger`.
-
-- [ ] **Step 6: Refactor the controller away from full reloads**
-
-```ts
-export type LedgerController = Readonly<{
-  ledger: Ledger | null;
-  transactions: readonly Transaction[];
-  nextCursor: TransactionCursor | null;
-  summary: MonthSummary | null;
-  loadingFirstPage: boolean;
-  loadingMore: boolean;
-  loadFirst(query?: Pick<TransactionQuery, 'kinds' | 'search'>): Promise<void>;
-  loadMore(): Promise<void>;
-  createTransaction(draft: TransactionDraft): Promise<Transaction>;
-  updateTransaction(id: string, draft: TransactionDraft): Promise<Transaction>;
-  deleteTransaction(id: string): Promise<void>;
+export type TransactionPage = Readonly<{
+  items: readonly Transaction[];
+  olderCursor: TransactionCursor | null;
+  newerCursor: TransactionCursor | null;
+  hasOlder: boolean;
+  hasNewer: boolean;
 }>;
 ```
 
-Use a monotonically increasing request generation to discard stale search/page responses. Append/dedupe pages and retain only the newest 200 rows. A mutation re-fetches the first page and current summary/budget usage; it never invokes all-row `snapshot()`.
+Normalize/dedupe/sort kinds and normalize search before hashing. Cursor JSON is
+base64url, at most 1 KiB, exact-key/versioned, and contains only version,
+direction, ledger ID, SHA-256 filter fingerprint, and the strict
+`occurredOn/createdAt/id` edge. It contains no raw search text. An older cursor
+uses tuple `<` with descending order; a newer cursor uses tuple `>` with
+ascending SQL order and reverses the bounded result into canonical descending
+order. Fetch only `limit + 1` and bind every value.
 
-- [ ] **Step 7: Run focused and complete tests**
+Normalize at most 80 Unicode code points into at most eight Unicode
+letter/number tokens. Quote every token, append `*`, cap the final expression,
+and bind the complete `MATCH` value. Empty normalized search bypasses FTS.
+Prove FTS operators/quotes cannot be injected and assert query plans for
+unfiltered/filtered first and continuation pages plus FTS.
 
-Run: `cd mobile && npm test -- --runInBand __tests__/money.test.ts __tests__/transactionQueries.integration.test.ts __tests__/financeRepository.test.ts __tests__/financeProvider.test.tsx && npm test -- --runInBand && npm run typecheck`
+- [ ] **Step 4: Compute every aggregate with exact bounded limbs**
 
-Expected: all tests PASS; TypeScript reports no errors.
+Never call raw `SUM(amount_minor)`. Each aggregate first selects at most 100,001
+matching rows, then sums quotient/remainder limbs using base 1,000,000. With the
+100,000-row cap, each SQLite limb remains a safe integer and below signed
+64-bit range. Reconstruct through `BigInt`; return a number only when the exact
+result is max-safe. Apply the same helper/contract to income, expense, category,
+six-month trend, budget usage, and every Task 4 planning total.
 
-- [ ] **Step 8: Commit bounded ledger queries**
+Month/range queries validate strict `YYYY-MM`, compute half-open date bounds,
+use one bounded grouped query where possible, and zero-fill only after strict
+mapping. A malicious/corrupt database error is translated to a typed,
+content-free domain failure; raw SQLite details never reach UI state.
 
-Stage only the literal Task 3 file list, require the cached name-status list to
-equal that allowlist, inspect the cached diff, and commit with
+- [ ] **Step 5: Replace all-row reloads with a bounded controller and real phone UI**
+
+The controller exposes ledger, budgets, current month summary/trend, a canonical
+descending transaction window, `hasOlder/hasNewer`, independent first/older/
+newer loading flags, active normalized filters, and `loadFirst`, `loadOlder`,
+and `loadNewer`. A monotonically increasing generation discards stale work at
+every await. Older pages append/dedupe and evict the newer edge; newer pages
+prepend/dedupe and evict the older edge. The retained window is always at most
+200 contiguous rows, and filter changes reset both edges.
+
+`TransactionsScreen` sends search/kind filters to the repository instead of
+filtering an all-row array. Use a virtualized phone list with visible-position
+preservation, end-of-list older loading, and an accessible explicit newer-page
+control after the newer edge has been evicted. Home and Insights consume SQL
+summary/trend state, not partial window calculations. A create/update/delete
+invalidates and re-fetches the first page and affected aggregates; it never
+calls `listTransactions()` or `snapshot()` as a normal reload. Lifecycle
+backup/import/delete APIs remain available but are not used for screen refresh.
+
+- [ ] **Step 6: Run focused, migration-regression, and complete gates**
+
+Under Node 22.22.0 run the money/query/aggregate/repository/provider/UI/backup
+focused suites, the complete reviewed Task 2 migration suites, then the entire
+mobile suite, TypeScript, Expo lint, iOS export, and production audit. Record
+exact counts and the existing unrelated React `act(...)` warnings separately.
+
+- [ ] **Step 7: Commit bounded ledger queries**
+
+Stage every literal Task 3 path or relevant hunk explicitly. Require the cached
+name-status list to be a subset of the allowlist above, inspect the cached diff,
+run `git diff --cached --check`, and commit with
 `feat: page and aggregate the local ledger`. Never stage a directory wholesale.
 
 ### Task 4: Implement recurring bills, month budgets, rollover, and savings goals
