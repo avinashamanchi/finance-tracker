@@ -21,7 +21,7 @@
 - Transaction pages contain at most 50 rows; export/import pages contain at most 500 records; React transaction state contains at most 200 rows.
 - Version-2 `.finova` files use scrypt with a 16-byte salt and 32-byte output, XChaCha20-Poly1305 authenticated 64 KiB frames, a 50 MiB encrypted-file limit, and passwords of 12-128 Unicode code points.
 - Large-ledger fixtures contain 100,000 transactions across 120 months, 180 budget plans, 120 recurring templates, and 50 savings goals.
-- Physical-device p95 gates are: current-schema open under 750 ms, first page under 250 ms, FTS under 300 ms, monthly aggregate under 200 ms, no main-thread stall over 100 ms, and encrypted backup peak memory under 250 MiB.
+- Physical-device p95 gates are: current-schema open under 750 ms, frozen shipped-v1-to-v4 migration under 15 seconds, first page under 250 ms, FTS under 300 ms, monthly aggregate under 200 ms, no main-thread stall over 100 ms, and migration/encrypted-backup peak memory under 250 MiB.
 - Do not overwrite or discard the uncommitted App Store/monetization work already in this worktree; reconcile it file by file.
 
 ---
@@ -158,46 +158,50 @@ allowlist before committing with subject
 - Create: `mobile/src/data/migrations/004_planning.ts`
 - Create: `mobile/src/data/migrations/index.ts`
 - Create: `mobile/src/data/migrations/runner.ts`
+- Create: `mobile/src/data/configureConnection.ts`
 - Create: `mobile/__tests__/sqliteMigrations.integration.test.ts`
+- Create: `mobile/__tests__/migrationAdapterContract.test.ts`
+- Create: `mobile/__tests__/fixtures/shippedV1Schema.sql`
 - Create: `mobile/__tests__/support/nodeMigrationAdapter.ts`
 - Modify: `mobile/src/data/financeRepository.ts`
-- Modify: `mobile/package.json`
 
 **Interfaces:**
-- Consumes: an Expo `SQLiteDatabase`-compatible connection and `MigrationContext { legacyLedgerId: string; nowIso: string }`.
+- Consumes: an Expo `SQLiteDatabase`-compatible connection and
+  `MigrationContext { legacyLedgerId: string; currentMonth: string; nowIso: string }`.
 - Produces: `LATEST_SCHEMA_VERSION = 4`, `MIGRATIONS: readonly Migration[]`, and `runMigrations(database: MigrationDatabase, context: MigrationContext): Promise<void>`.
+- Produces `configureConnection()` that sets and verifies WAL,
+  `foreign_keys = ON`, and a bounded busy timeout before any migration
+  transaction. `legacyLedgerId` is an app-local random UUID, never derived from
+  Apple, RevenueCat, device, or account identity; `currentMonth` is computed
+  once from the device's local calendar as canonical `YYYY-MM`.
 
 - [ ] **Step 1: Write real-SQLite red tests for every start state**
 
-```ts
-import { DatabaseSync } from 'node:sqlite';
-import { MIGRATIONS, LATEST_SCHEMA_VERSION } from '../src/data/migrations';
-import { runMigrations } from '../src/data/migrations/runner';
-import { nodeMigrationAdapter } from './support/nodeMigrationAdapter';
+Create `mobile/__tests__/fixtures/shippedV1Schema.sql` as a frozen independent
+copy of the schema shipped by the deleted `schema.ts`; never build legacy states
+by running the new `MIGRATIONS` code under test. Test all of these fixtures:
 
-test.each([0, 1, 2, 3, 4])('migrates schema version %i to latest without losing rows', async start => {
-  const raw = new DatabaseSync(':memory:');
-  const db = nodeMigrationAdapter(raw);
-  for (const migration of MIGRATIONS.filter(item => item.version <= start)) {
-    await migration.up(db, { legacyLedgerId: '00000000-0000-4000-8000-000000000001', nowIso: '2026-08-07T00:00:00.000Z' });
-    raw.exec(`PRAGMA user_version = ${migration.version}`);
-  }
-  if (start === 1) raw.exec("INSERT INTO transactions VALUES ('t1','expense',1250,'groceries','Food','2026-08-01',0,'2026-08-01T00:00:00.000Z','2026-08-01T00:00:00.000Z')");
-  await runMigrations(db, { legacyLedgerId: '00000000-0000-4000-8000-000000000001', nowIso: '2026-08-07T00:00:00.000Z' });
-  expect(raw.prepare('PRAGMA user_version').get()).toEqual({ user_version: LATEST_SCHEMA_VERSION });
-  if (start === 1) expect(raw.prepare('SELECT amount_minor FROM transactions WHERE id = ?').get('t1')).toEqual({ amount_minor: 1250 });
-  expect(raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-});
+- pristine v0;
+- recoverable partial-v0 databases containing compatible subsets of the shipped
+  v1 tables but `user_version = 0`;
+- full shipped v1 with multiple transactions and timeless budgets;
+- independently frozen populated v2, v3, and v4 databases;
+- negative, newer-than-supported, and structurally incompatible/unknown v0.
 
-it('rolls back a failed migration and rejects a database newer than the app', async () => {
-  const raw = new DatabaseSync(':memory:');
-  raw.exec('PRAGMA user_version = 99');
-  await expect(runMigrations(nodeMigrationAdapter(raw), { legacyLedgerId: '00000000-0000-4000-8000-000000000001', nowIso: '2026-08-07T00:00:00.000Z' }))
-    .rejects.toThrow('newer than this Finova build');
-});
-```
+Assert exact row/field/ID/timestamp/recurring/money/budget preservation, USD
+ledger assignment, canonical current-month mapping, table/index/trigger counts,
+`user_version`, `foreign_key_check`, and reopen behavior. Run initialization
+twice with a different context and prove the persisted random ledger ID never
+changes or duplicates. Unknown/incompatible v0 must fail closed with a bytewise
+schema/data digest unchanged.
 
-Create `mobile/__tests__/support/nodeMigrationAdapter.ts` in this step. Its adapter must execute the same SQL strings with `DatabaseSync`, implement an exclusive `BEGIN IMMEDIATE`/`COMMIT` transaction with `ROLLBACK` on throw, and expose bound `run`, `first`, and `all` operations.
+Create `mobile/__tests__/support/nodeMigrationAdapter.ts` and an adapter-contract
+suite in this step. Both Node and Expo adapters expose bound `exec`, `run`,
+`first`, `all`, and the same explicit write-lock/transaction semantics. Do not
+claim `BEGIN IMMEDIATE` parity while Expo uses an ordinary deferred transaction.
+Serialize initialization, acquire the agreed write lock, then read and validate
+`user_version` inside it. A concurrent-initialize test must prove exactly one
+immutable ledger is created and both callers observe schema v4.
 
 - [ ] **Step 2: Run the integration test and verify red**
 
@@ -212,9 +216,14 @@ export interface MigrationDatabase {
   exec(sql: string): Promise<void>;
   run(sql: string, params?: readonly (string | number | null)[]): Promise<void>;
   first<T>(sql: string, params?: readonly (string | number | null)[]): Promise<T | null>;
+  all<T>(sql: string, params?: readonly (string | number | null)[]): Promise<readonly T[]>;
   exclusive<T>(work: (transaction: MigrationDatabase) => Promise<T>): Promise<T>;
 }
-export type MigrationContext = Readonly<{ legacyLedgerId: string; nowIso: string }>;
+export type MigrationContext = Readonly<{
+  legacyLedgerId: string;
+  currentMonth: string;
+  nowIso: string;
+}>;
 export type Migration = Readonly<{
   version: number;
   name: string;
@@ -222,7 +231,13 @@ export type Migration = Readonly<{
 }>;
 ```
 
-`runMigrations` must verify contiguous versions `1..4`, reject `user_version > 4`, and apply each missing `up` plus `PRAGMA user_version = N` inside the same `exclusive` callback. Use `withExclusiveTransactionAsync(tx => work(expoMigrationAdapter(tx)))` in the Expo adapter.
+Call `configureConnection()` before transactions; `foreign_keys = ON` inside a
+transaction is ineffective. Verify WAL, foreign keys, and bounded busy timeout
+on every connection. `runMigrations` must single-flight initialization, acquire
+the same explicit write-lock semantics in Node and Expo, read/validate
+`user_version` only after the lock, verify contiguous versions `1..4`, reject
+negative/newer/unknown structural states, and apply each missing `up` plus
+`PRAGMA user_version = N` inside the same rollback-safe transaction.
 
 - [ ] **Step 4: Implement the four migrations with the shipped data contracts**
 
@@ -241,7 +256,10 @@ CREATE TABLE transactions_v2 (
   id TEXT PRIMARY KEY NOT NULL,
   ledger_id TEXT NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
   kind TEXT NOT NULL CHECK(kind IN ('income','expense')),
-  amount_minor INTEGER NOT NULL CHECK(amount_minor > 0),
+  amount_minor INTEGER NOT NULL CHECK(
+    typeof(amount_minor) = 'integer'
+    AND amount_minor BETWEEN 1 AND 9007199254740991
+  ),
   category_id TEXT NOT NULL,
   description TEXT NOT NULL,
   occurred_on TEXT NOT NULL,
@@ -257,11 +275,35 @@ CREATE INDEX transactions_ledger_month_kind ON transactions_v2(ledger_id, occurr
 CREATE VIRTUAL TABLE transaction_fts USING fts5(description, category_id, content='transactions', content_rowid='rowid', tokenize='unicode61 remove_diacritics 2');
 ```
 
-Migration 3 creates `recurring_templates` and `expected_occurrences` with `UNIQUE(template_id, due_on)`. Migration 4 creates `budget_plans` keyed by `(ledger_id, category_id, month)`, `savings_goals`, and `goal_contributions`. Add FTS insert/update/delete triggers after renaming `transactions_v2` to `transactions`. Seed one `Personal` USD ledger with minor unit 2 and migrate timeless budgets into the current month supplied by migration context. Do not infer templates from `legacy_recurring`.
+Before destructive DDL, validate every legacy money value for SQLite integer
+storage and JavaScript safe-integer range; one invalid row rolls back the entire
+migration. Apply the same `typeof(...) = 'integer'` and range checks to every
+monetary column in migrations 3/4: transaction/recurring amounts and positive
+goal targets use `1..9007199254740991`; explicitly zero-capable budget and
+contribution fields use `0..9007199254740991`. Test max-safe,
+max-safe-plus-one, fractional, negative, zero, and rollback behavior.
+
+Migration 3 creates `recurring_templates` and `expected_occurrences` with
+`UNIQUE(template_id, due_on)`. Migration 4 creates `budget_plans` keyed by
+`(ledger_id, category_id, month)`, `savings_goals`, and `goal_contributions`.
+Rename `transactions_v2` to `transactions` first, create the external-content
+FTS table and correct insert/update/delete triggers, then run
+`INSERT INTO transaction_fts(transaction_fts) VALUES('rebuild')`. Use the FTS5
+delete command correctly in update/delete triggers. Seed one `Personal` USD
+ledger with minor unit 2 and migrate timeless budgets into the canonical local
+`currentMonth` supplied by migration context. Use set-based `INSERT ... SELECT`
+for row migration/backfill—never hydrate all legacy rows into JavaScript. Do not
+infer templates from `legacy_recurring`.
 
 - [ ] **Step 5: Prove trigger, rollback, reopen, and query-plan behavior**
 
-Extend the integration test to insert/update/delete a transaction and assert its FTS row follows; inject a migration that throws after creating a table and assert both `user_version` and schema remain unchanged; run initialization twice; and assert `EXPLAIN QUERY PLAN` mentions `transactions_ledger_order` for the first-page query.
+Before any new write, assert a migrated legacy description is searchable through
+FTS. Then insert/update/delete and prove old tokens disappear, new tokens appear,
+deleted hits vanish, FTS/content row counts match, FTS `integrity-check` passes,
+and results survive reopen. Inject failures after each destructive phase and
+assert `user_version`, schema, ledger ID, and row digest remain unchanged. Run
+initialization twice and concurrently; assert `EXPLAIN QUERY PLAN` mentions
+`transactions_ledger_order` for the first-page query.
 
 Run: `cd mobile && npm test -- --runInBand __tests__/sqliteMigrations.integration.test.ts`
 
@@ -269,11 +311,11 @@ Expected: PASS with no experimental-warning assertion dependency.
 
 - [ ] **Step 6: Commit migrations**
 
-```bash
-git add mobile/src/data/migrations mobile/src/data/financeRepository.ts mobile/__tests__/sqliteMigrations.integration.test.ts mobile/__tests__/support mobile/package.json
-git rm mobile/src/data/schema.ts
-git commit -m "feat: add ordered SQLite migrations"
-```
+Stage only the literal Task 2 file list above (including the deletion of
+`schema.ts`), then require `git diff --cached --name-status` to equal that
+allowlist and inspect the cached diff before committing with
+`feat: add ordered SQLite migrations`. Do not stage the already-dirty mobile
+package files or any directory wholesale.
 
 ### Task 3: Add ledger currency, keyset pagination, FTS, and SQL aggregates
 
@@ -380,10 +422,9 @@ Expected: all tests PASS; TypeScript reports no errors.
 
 - [ ] **Step 8: Commit bounded ledger queries**
 
-```bash
-git add mobile/src/domain mobile/src/data mobile/__tests__
-git commit -m "feat: page and aggregate the local ledger"
-```
+Stage only the literal Task 3 file list, require the cached name-status list to
+equal that allowlist, inspect the cached diff, and commit with
+`feat: page and aggregate the local ledger`. Never stage a directory wholesale.
 
 ### Task 4: Implement recurring bills, month budgets, rollover, and savings goals
 
@@ -504,10 +545,10 @@ Run: `cd mobile && npm test -- --runInBand __tests__/recurrence.test.ts __tests_
 
 Expected: PASS.
 
-```bash
-git add mobile/src/domain mobile/src/data mobile/__tests__
-git commit -m "feat: add local recurring and planning tools"
-```
+Stage only the literal Task 4 file list, require the cached name-status list to
+equal that allowlist, inspect the cached diff, and commit with
+`feat: add local recurring and planning tools`. Never stage a directory
+wholesale.
 
 ### Task 5: Add encrypted streaming backup, safe diagnostics, and complete deletion
 
@@ -643,10 +684,10 @@ Expected: PASS.
 
 - [ ] **Step 12: Commit private data portability and cleanup**
 
-```bash
-git add mobile/package.json mobile/package-lock.json mobile/src/services mobile/src/data/importStagingRepository.ts mobile/src/data/financeRepository.ts mobile/app/_layout.tsx mobile/__tests__
-git commit -m "feat: add private backup and cleanup foundation"
-```
+Stage only the literal Task 5 file list, require the cached name-status list to
+equal that allowlist, inspect the cached diff, and commit with
+`feat: add private backup and cleanup foundation`. Reconcile already-dirty files
+line by line and never stage a directory wholesale.
 
 ### Task 6: Stabilize anonymous RevenueCat entitlement refresh and privacy truth
 
@@ -731,10 +772,10 @@ Expected: PASS; privacy text tests find the RevenueCat disclosure and no subscri
 
 - [ ] **Step 7: Commit stable purchase state**
 
-```bash
-git add mobile/src/billing mobile/src/screens/PrivacyScreen.tsx mobile/__tests__ public docs/app-store
-git commit -m "feat: stabilize Finova Plus entitlement state"
-```
+Stage only the literal Task 6 file list, require the cached name-status list to
+equal that allowlist, inspect the cached diff, and commit with
+`feat: stabilize Finova Plus entitlement state`. Reconcile already-dirty files
+line by line and never stage a directory wholesale.
 
 ### Task 7: Wire bounded transactions, expected bills, rollover, goals, backup, and diagnostics into the phone UI
 
@@ -809,16 +850,17 @@ Expected: PASS; every target is at least 44 points, has a role/label/state, supp
 
 - [ ] **Step 7: Commit complete phone flows**
 
-```bash
-git add mobile/src/screens mobile/app mobile/__tests__
-git commit -m "feat: expose scalable Plus planning flows"
-```
+Stage only the literal Task 7 file list, require the cached name-status list to
+equal that allowlist, inspect the cached diff, and commit with
+`feat: expose scalable Plus planning flows`. Reconcile already-dirty files line
+by line and never stage a directory wholesale.
 
 ### Task 8: Enforce large-ledger, release, and external Apple/RevenueCat gates
 
 **Files:**
 - Create: `mobile/src/testing/largeLedgerFixture.ts`
 - Create: `mobile/__tests__/largeLedgerQueries.integration.test.ts`
+- Create: `mobile/__tests__/largeLedgerMigration.integration.test.ts`
 - Create: `mobile/__tests__/noFullReload.test.ts`
 - Create: `mobile/scripts/profile-large-ledger.mjs`
 - Modify: `mobile/package.json`
@@ -846,23 +888,38 @@ expect(await explainFirstPage(repository)).toContain('transactions_ledger_order'
 expect(await explainSearch(repository, 'market')).toContain('transaction_fts');
 ```
 
+Build the same deterministic data twice: once directly at current schema and
+once by loading the independent frozen shipped-v1 schema and then running the
+real v1-to-v4 migration. The migration test asserts counts, a content digest,
+the immutable ledger ID, current-month budgets, FTS searchability/integrity,
+`foreign_key_check`, reopen, and a second no-op migration. Inject a failure late
+in the 100k-row migration and prove rollback leaves the frozen source digest and
+`user_version` unchanged.
+
 `noFullReload.test.ts` reads supported screen/provider source and fails on `.snapshot()` in UI code, `listTransactions()` in production code, `SELECT * FROM transactions` without `LIMIT`, or `OFFSET` in transaction pagination.
 
 - [ ] **Step 2: Run scale tests and verify red**
 
-Run: `cd mobile && npm test -- --runInBand __tests__/largeLedgerQueries.integration.test.ts __tests__/noFullReload.test.ts`
+Run: `cd mobile && npm test -- --runInBand __tests__/largeLedgerQueries.integration.test.ts __tests__/largeLedgerMigration.integration.test.ts __tests__/noFullReload.test.ts`
 
 Expected: FAIL until the deterministic fixture, digest, query-plan helpers, and static rules exist. Record the generator's observed stable SHA-256 in the device-evidence file produced by the profiling step.
 
 - [ ] **Step 3: Build the deterministic fixture and bounded Node profiler**
 
-The fixture uses a seeded PRNG and bulk inserts inside one transaction. The profiler runs one warm-up plus ten measured iterations for current-schema open, first page, FTS, aggregate, and encrypted export/import. It writes content-free JSON containing Node version, schema version, fixture digest, counts, p50/p95 timings, peak RSS, and query plans. Node timing is regression evidence only and cannot mark the physical-device rows passed.
+The fixture uses a seeded PRNG and bulk inserts inside one transaction. The
+profiler separately measures current-schema open and the complete frozen
+shipped-v1-to-v4 migration, then runs one warm-up plus ten measured iterations
+for first page, FTS, aggregate, and encrypted export/import. It verifies the
+post-migration digest/counts/FTS/foreign keys/reopen result before recording any
+timing. It writes content-free JSON containing Node version, schema versions,
+fixture digest, counts, p50/p95 timings, peak RSS, and query plans. Node timing
+is regression evidence only and cannot mark the physical-device rows passed.
 
 Add scripts:
 
 ```json
 {
-  "test:scale": "jest --runInBand __tests__/largeLedgerQueries.integration.test.ts __tests__/noFullReload.test.ts",
+  "test:scale": "jest --runInBand __tests__/largeLedgerQueries.integration.test.ts __tests__/largeLedgerMigration.integration.test.ts __tests__/noFullReload.test.ts",
   "profile:scale": "node scripts/profile-large-ledger.mjs"
 }
 ```
@@ -873,7 +930,15 @@ Run `npm run test:scale` in `ios-ci.yml`. Run `npm run profile:scale` in the man
 
 - [ ] **Step 5: Create the exact physical-device evidence matrix**
 
-`finova-25k-device-evidence.md` has unchecked rows for device model, iOS version, signed build ID, fixture digest, ten raw samples, calculated p95, peak memory, VoiceOver, Dynamic Type 200%, Reduced Motion, smallest screen, keyboard, purchase/restore, encrypted export/import, and Delete All. Thresholds are the exact Global Constraints values. A person records observed values; prose such as “fast” or simulator output cannot pass a row.
+`finova-25k-device-evidence.md` has unchecked rows for device model, iOS version,
+signed build ID, fixture digest, ten raw current-schema-open samples, ten raw
+frozen-v1-to-v4 migration samples, calculated p95 values, migration and backup
+peak memory, maximum main-thread stall during migration, migrated digest/counts,
+FTS/integrity/rollback/reopen checks, VoiceOver, Dynamic Type 200%, Reduced
+Motion, smallest screen, keyboard, purchase/restore, encrypted export/import,
+and Delete All. Thresholds are the exact Global Constraints values. A person
+records observed values from a signed build; prose such as “fast,” simulator
+output, or the Node profiler cannot pass a row.
 
 - [ ] **Step 6: Preserve external Apple and RevenueCat blockers**
 
@@ -889,7 +954,7 @@ Expected: all local commands PASS. Report signed build, device matrix, Apple/Rev
 
 - [ ] **Step 8: Commit scale and release gates**
 
-```bash
-git add mobile/src/testing mobile/__tests__ mobile/scripts mobile/package.json .github/workflows docs/app-store
-git commit -m "test: enforce Finova 25k release gates"
-```
+Stage only the literal Task 8 file list, require the cached name-status list to
+equal that allowlist, inspect the cached diff, and commit with
+`test: enforce Finova 25k release gates`. Reconcile already-dirty release files
+line by line and never stage a directory wholesale.
