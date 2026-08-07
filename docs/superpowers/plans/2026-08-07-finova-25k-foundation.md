@@ -429,8 +429,11 @@ every mapped boundary.
 
 The repository exposes the canonical ledger and enforces a technical cap of
 100,000 transaction rows for new inserts and replacement. Existing over-cap
-data remains deletable/exportable but bounded queries return a typed,
-content-free capacity error rather than crashing or silently truncating.
+data remains pageable and deletable, while aggregate queries return a typed,
+content-free capacity error rather than crashing or silently truncating. The
+existing version-1 backup stays intentionally bounded in this task; Task 7 must
+land streaming full-account export before release, so no 100k-readiness claim
+is allowed from Task 3 alone.
 
 - [ ] **Step 3: Implement strict, filter-bound bidirectional keyset cursors**
 
