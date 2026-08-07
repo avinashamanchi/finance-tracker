@@ -36,13 +36,20 @@
 - Move: `package.json` to `legacy-web/package.json`
 - Move: `package-lock.json` to `legacy-web/package-lock.json`
 - Modify: `legacy-web/package.json`
+- Modify: `legacy-web/package-lock.json`
 - Create: `mobile/__tests__/legacyWebQuarantine.test.ts`
 - Modify: `.github/workflows/ios-ci.yml`
 - Modify: `.github/workflows/release-readiness.yml`
+- Modify: `README.md`
 
 **Interfaces:**
 - Consumes: current Create React App source and its plaintext `useAuth` browser-storage implementation.
 - Produces: `node legacy-web/scripts/require-explicit-unsafe-opt-in.mjs`, which exits zero only when `FINOVA_ALLOW_UNSAFE_LEGACY_WEB=I_UNDERSTAND_PLAINTEXT_PASSWORD_STORAGE`; supported CI and release scripts have no dependency on `legacy-web`.
+
+**Dirty-state and staging boundary:**
+- Preserve the dirty root legal pages and all unrelated mobile/billing/App Store work; move only `public/index.html` from `public/`.
+- Leave ignored root `build/` untouched; it is stale legacy output, not release evidence.
+- Stage only the exact Task 1 paths below and verify the cached path inventory before committing; never broad-stage `public`, `mobile`, `.github/workflows`, or the repository.
 
 - [ ] **Step 1: Write the failing quarantine test**
 
@@ -53,11 +60,21 @@ import path from 'node:path';
 const root = path.resolve(__dirname, '../..');
 
 it('keeps the unsafe browser login outside supported build and deploy paths', () => {
-  expect(fs.existsSync(path.join(root, 'src/hooks/useAuth.js'))).toBe(false);
+  for (const unsupportedRootEntrypoint of ['src', 'public/index.html', 'package.json', 'package-lock.json']) {
+    expect(fs.existsSync(path.join(root, unsupportedRootEntrypoint))).toBe(false);
+  }
   const legacyPackage = JSON.parse(fs.readFileSync(path.join(root, 'legacy-web/package.json'), 'utf8'));
+  const legacyLock = JSON.parse(fs.readFileSync(path.join(root, 'legacy-web/package-lock.json'), 'utf8'));
   expect(legacyPackage.scripts.deploy).toBeUndefined();
-  expect(legacyPackage.scripts.prestart).toBe('node scripts/require-explicit-unsafe-opt-in.mjs');
-  for (const workflow of ['ios-ci.yml', 'release-readiness.yml']) {
+  expect(legacyPackage.scripts.predeploy).toBeUndefined();
+  expect(legacyPackage.scripts.build).toBeUndefined();
+  expect(legacyPackage.homepage).toBeUndefined();
+  expect(legacyPackage.devDependencies?.['gh-pages']).toBeUndefined();
+  expect(legacyLock.packages?.['node_modules/gh-pages']).toBeUndefined();
+  expect(legacyPackage.scripts.prestart).toBeUndefined();
+  expect(legacyPackage.scripts.start).toBe('node scripts/require-explicit-unsafe-opt-in.mjs && react-scripts start');
+  expect(legacyPackage.scripts['build:unsupported-local-only']).toBe('node scripts/require-explicit-unsafe-opt-in.mjs && react-scripts build');
+  for (const workflow of fs.readdirSync(path.join(root, '.github/workflows')).filter(name => /\.ya?ml$/i.test(name))) {
     const text = fs.readFileSync(path.join(root, '.github/workflows', workflow), 'utf8');
     expect(text).not.toMatch(/legacy-web|react-scripts|gh-pages/);
   }
@@ -72,13 +89,14 @@ Expected: FAIL because `src/hooks/useAuth.js` is still at the supported reposito
 
 - [ ] **Step 3: Move and lock the legacy client**
 
-Use `git mv` for the three paths, delete `deploy` and `predeploy` from the moved package, and set these scripts:
+Use `git mv` for all six listed moves. Delete `deploy`, `predeploy`, and ordinary
+`build`; remove `homepage` and `gh-pages` from both moved package files; then set
+these scripts:
 
 ```json
 {
   "scripts": {
-    "prestart": "node scripts/require-explicit-unsafe-opt-in.mjs",
-    "start": "react-scripts start",
+    "start": "node scripts/require-explicit-unsafe-opt-in.mjs && react-scripts start",
     "build:unsupported-local-only": "node scripts/require-explicit-unsafe-opt-in.mjs && react-scripts build"
   }
 }
@@ -94,22 +112,40 @@ if (process.env.FINOVA_ALLOW_UNSAFE_LEGACY_WEB !== expected) {
 }
 ```
 
-`QUARANTINED.md` must state that the demo is unsupported, must never receive real credentials or finance data, has no deploy path, and is not a migration source. Keep `public/privacy.html`, `public/terms.html`, and `public/support.html` at the repository root as static legal artifacts.
+`QUARANTINED.md` and the root README must state that the demo is unsupported,
+must never receive real credentials or finance data, has no deploy path, and is
+not a migration source. They must also say this commit neither disables nor
+updates the published Pages branch and does not clear browser `localStorage`.
+Never migrate `finova_users` or `finova_session`. If historical finance data
+matters, recovery is a separate user-directed workflow before authorized
+shutdown. Before release, replace the Pages root with a safe static
+landing/legal host or disable it and verify anonymously; do not perform or imply
+that external action here, and do not publish only the legal pages onto the
+unsafe existing branch. Keep `public/privacy.html`, `public/terms.html`, and
+`public/support.html` at the repository root as static legal artifacts.
+
+The README must point supported development/release instructions only to
+`mobile/` and describe the exact opt-in as unsafe local archaeology. The guard
+protects repository scripts, not arbitrary manual `react-scripts` execution.
 
 - [ ] **Step 4: Add CI's supported-surface assertion and rerun**
 
-Add `npm test -- --runInBand __tests__/legacyWebQuarantine.test.ts` to both existing mobile test steps; do not add a legacy install/build step.
+Add the focused test to both workflows without replacing or narrowing their
+existing full mobile test commands; do not add a legacy install/build step.
+Exercise the guard with the variable explicitly unset, wrong values, and the
+one exact allowed value.
 
-Run: `cd mobile && npm test -- --runInBand __tests__/legacyWebQuarantine.test.ts && npm run typecheck`
+Run under Node 22: `cd mobile && npx --yes node@22.22.0 "$(command -v npm)" test -- --runInBand __tests__/legacyWebQuarantine.test.ts && npx --yes node@22.22.0 "$(command -v npm)" run typecheck`, then run the guard once unset, once with a wrong value, and once with the exact allowed value. Only the exact value may exit zero.
 
 Expected: PASS; TypeScript reports no errors.
 
 - [ ] **Step 5: Commit the quarantine**
 
-```bash
-git add legacy-web mobile/__tests__/legacyWebQuarantine.test.ts .github/workflows src package.json package-lock.json
-git commit -m "chore: quarantine unsafe legacy web client"
-```
+Stage only the literal moved/created/modified Task 1 paths (including both old
+and new names, `README.md`, and only the two named workflow files), inspect
+`git diff --cached --name-status`, and confirm every staged path is in the Task 1
+allowlist before committing with subject
+`chore: quarantine unsafe legacy web client`.
 
 ### Task 2: Replace schema bootstrap with real ordered migrations
 
