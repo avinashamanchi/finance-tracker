@@ -337,8 +337,10 @@ package files or any directory wholesale.
 - Modify: `mobile/src/screens/BudgetsScreen.tsx`
 - Modify: `mobile/src/screens/HomeScreen.tsx`
 - Modify: `mobile/src/screens/InsightsScreen.tsx`
+- Modify: `mobile/src/screens/SettingsScreen.tsx`
 - Modify: `mobile/src/screens/TransactionEditor.tsx`
 - Modify: `mobile/src/screens/TransactionsScreen.tsx`
+- Modify: `mobile/app/transaction/[id].tsx`
 - Modify: `mobile/src/services/backup.ts`
 - Modify: `mobile/src/services/csv.ts`
 - Create: `mobile/__tests__/transactionQueries.integration.test.ts`
@@ -355,12 +357,15 @@ package files or any directory wholesale.
 - Modify: `mobile/__tests__/sqliteMigrations.integration.test.ts`
 - Modify: `mobile/__tests__/summaries.test.ts`
 - Modify: `mobile/__tests__/transactionsFlow.test.tsx`
+- Create: `mobile/__tests__/transactionEditRoute.test.tsx`
 
 The allowlist is deliberately complete because the public money-field rename
 must not leave a duplicate cents/minor model. `BudgetsScreen`,
 `budgetsFlow.test.tsx`, and `settingsFlow.test.tsx` already contain unrelated
 user-owned release/billing work: stage only the Task 3 hunks in those files.
-Do not stage any package, App Store, legal, billing, or release-config path.
+`SettingsScreen.tsx` also contains unrelated user-owned billing/legal work:
+stage only the Task 3 correctness hunks. Do not stage any package, App Store,
+legal, billing, or release-config path.
 
 **Interfaces:**
 - Consumes: reviewed schema version 4 and its immutable canonical ledger row.
@@ -382,21 +387,38 @@ Add tests before production code for all of the following:
   grouping errors, non-positive transaction values, and max-safe overflow;
 - formatting is exact at `Number.MAX_SAFE_INTEGER` (for USD it ends in `.91`,
   never the rounded `.90` produced by dividing the number before `Intl`), works
-  for negative balances, and preserves locale currency placement;
+  for `-1` at minor unit 2, localizes inserted digits in a non-ASCII-digit
+  locale, and preserves locale currency placement;
 - version-1 backups round-trip their legacy cents keys byte-semantically while
-  the in-memory model uses minor units;
+  the in-memory model uses minor units, using an independent literal frozen v1
+  fixture; v1 import/export is allowed only for the canonical USD/2 ledger;
+- the frozen pre-Task-3 v1 fixture, paging, direct editing, deletion, and backup
+  round-trip preserve both bounded legacy transaction IDs such as `tx-income`
+  and new UUIDv4 IDs; only new transaction creation requires UUIDv4;
 - first/older/newer pages traverse at least 500 equal-key-heavy rows without
   duplicate or skipped IDs, and the controller can move both directions while
   retaining at most 200 contiguous rows;
 - malformed, overlong, wrong-version, wrong-ledger, wrong-filter, unsafe-date,
   and wrong-direction cursors fail before SQL; concurrent insert/delete/update,
   repeated pages, and stale first/older/newer responses cannot corrupt state;
+- UTF-8 base64url cursors preserve a valid non-ASCII legacy ID through paging,
+  direct edit, delete, and v1 backup while rejecting unpaired surrogates;
 - Unicode search normalization, empty search, quote/operator injection, more
   than eight tokens, and 80-code-point bounds are deterministic and query plans
   use the intended order and FTS indexes;
 - exact aggregate fixtures include a raw SQLite `SUM` overflow, an exact
   max-safe mathematical result, an over-max-safe result, and 100,001 rows.
   Failures are typed, content-free `MoneyRangeError` or `LedgerCapacityError`.
+- direct/deferred routes load an evicted transaction by validated ID instead of
+  consulting the controller window; CSV export succeeds completely at 201 and
+  500 rows, while 501 fails before artifact creation/sharing and never exports a
+  partial window;
+- historical Home/Insights anchors, overlapping stale responses, a globally
+  over-cap ledger with a small matching month, and concurrent cap admissions
+  retain independent page/aggregate failure state; 99,999/100,000/100,001-row
+  and two-concurrent-create cases prove the write cap is atomic;
+- six-month and budget-limit total fixtures contain individually safe values
+  whose ordinary Number reduction is unsafe, and fail with typed exact errors.
 
 Run the focused suite and record the intended RED failures while the reviewed
 Task 2 migration suites remain green.
@@ -424,16 +446,33 @@ before returning a safe number. `formatMinor(value, ledger, locale?)` must never
 divide a max-safe integer through floating point; compose exact `BigInt`
 integer/fraction parts with `Intl.NumberFormat.formatToParts` so grouping,
 currency placement, sign, and 0-3 fraction digits remain locale-aware and
-cent-exact. Validate canonical UUID/date/timestamp/currency/minor-unit values at
-every mapped boundary.
+cent-exact. Preserve the sign for negative sub-unit values by obtaining the
+template from signed zero and localize inserted fractional digits using the
+locale's digit parts. CSV uses a separate locale-independent exact decimal
+helper. Exact helpers, not ordinary Number reduction, also compute trend and
+budget totals.
+
+Require exactly one strictly mapped ledger and require its ID to be a canonical
+UUID. Transaction reads/imports/cursors accept either canonical UUIDs or the
+documented frozen legacy grammar: 1-100 Unicode code points, no control/NUL,
+unpaired surrogate, boundary whitespace, path separator, query/fragment
+delimiter, or empty value. New transaction creation always produces and
+validates UUIDv4. Never rewrite an existing legacy ID merely to satisfy Task 3.
+Validate strict dates/timestamps/currency/minor-unit values at every mapped
+boundary.
 
 The repository exposes the canonical ledger and enforces a technical cap of
-100,000 transaction rows for new inserts and replacement. Existing over-cap
+100,000 transaction rows for new inserts and replacement. Count and insert run
+in one exclusive transaction; replacement validates the complete incoming count
+before clearing active rows. Existing over-cap
 data remains pageable and deletable, while aggregate queries return a typed,
 content-free capacity error rather than crashing or silently truncating. The
-existing version-1 backup stays intentionally bounded in this task; Task 7 must
-land streaming full-account export before release, so no 100k-readiness claim
-is allowed from Task 3 alone.
+existing version-1 backup stays intentionally bounded in this task. A dedicated
+v1 snapshot/export operation reads at most 10,001 rows and returns a typed error
+before exposing an oversized snapshot; it never calls the unbounded legacy
+`listTransactions()`. Task 7 must
+wire the Task 5 streaming full-account/CSV services into the phone UI before
+release, so no 100k-readiness claim is allowed from Task 3 alone.
 
 - [ ] **Step 3: Implement strict, filter-bound bidirectional keyset cursors**
 
@@ -457,22 +496,32 @@ export type TransactionPage = Readonly<{
 
 Normalize/dedupe/sort kinds and normalize search before hashing. Cursor JSON is
 base64url, at most 1 KiB, exact-key/versioned, and contains only version,
-direction, ledger ID, SHA-256 filter fingerprint, and the strict
-`occurredOn/createdAt/id` edge. It contains no raw search text. An older cursor
+direction, ledger ID, a repository/session-salted SHA-256 filter fingerprint,
+and the strict `occurredOn/createdAt/id` edge. Edge date/timestamp/ID metadata is
+explicitly allowed; raw search, description, amount, category ID, and category
+label are forbidden. Cursors are ephemeral: never log, persist, diagnose, or
+surface them in errors, and they may expire after relaunch. Compare fingerprints
+in constant time. Inject digest/random sources for deterministic Node tests; no
+dependency change is allowed. Encode/decode cursor JSON as UTF-8 base64url,
+never through Latin-1-only `btoa`/`atob` assumptions. An older cursor
 uses tuple `<` with descending order; a newer cursor uses tuple `>` with
 ascending SQL order and reverses the bounded result into canonical descending
 order. Fetch only `limit + 1` and bind every value.
 
 Normalize at most 80 Unicode code points into at most eight Unicode
-letter/number tokens. Quote every token, append `*`, cap the final expression,
-and bind the complete `MATCH` value. Empty normalized search bypasses FTS.
+letter/number tokens. Map normalized bounded display-label tokens such as
+`Dining Out` to canonical category IDs before composing the query. Quote every
+token, append `*`, cap the final expression, and bind the complete `MATCH`
+value. Empty normalized search bypasses FTS.
 Prove FTS operators/quotes cannot be injected and assert query plans for
 unfiltered/filtered first and continuation pages plus FTS.
 
 - [ ] **Step 4: Compute every aggregate with exact bounded limbs**
 
-Never call raw `SUM(amount_minor)`. Each aggregate first selects at most 100,001
-matching rows, then sums quotient/remainder limbs using base 1,000,000. With the
+Never call raw `SUM(amount_minor)`. In the same serialized SQL snapshot, every
+aggregate first checks a per-ledger 100,001-row sentinel independent of the
+month/filter, then selects at most 100,001 matching rows and sums separate
+positive income/expense quotient/remainder limbs using base 1,000,000. With the
 100,000-row cap, each SQLite limb remains a safe integer and below signed
 64-bit range. Reconstruct through `BigInt`; return a number only when the exact
 result is max-safe. Apply the same helper/contract to income, expense, category,
@@ -485,22 +534,50 @@ content-free domain failure; raw SQLite details never reach UI state.
 
 - [ ] **Step 5: Replace all-row reloads with a bounded controller and real phone UI**
 
-The controller exposes ledger, budgets, current month summary/trend, a canonical
+The controller exposes ledger, budgets, month-keyed summary/trend/recent-row
+query state, a canonical
 descending transaction window, `hasOlder/hasNewer`, independent first/older/
 newer loading flags, active normalized filters, and `loadFirst`, `loadOlder`,
-and `loadNewer`. A monotonically increasing generation discards stale work at
+`loadNewer`, and `getTransactionById`. A monotonically increasing generation
+per query key discards stale work at
 every await. Older pages append/dedupe and evict the newer edge; newer pages
 prepend/dedupe and evict the older edge. The retained window is always at most
 200 contiguous rows, and filter changes reset both edges.
 
+The cursor codec can mint a cursor for any validated retained edge, or the
+controller retains the exact boundary tokens needed after dedupe/eviction; do
+not invent a cursor from unvalidated state. Controller-owned mutations
+invalidate/refetch affected page and month keys. Independent external mutations
+do not promise a historical snapshot.
+
 `TransactionsScreen` sends search/kind filters to the repository instead of
 filtering an all-row array. Use a virtualized phone list with visible-position
-preservation, end-of-list older loading, and an accessible explicit newer-page
-control after the newer edge has been evicted. Home and Insights consume SQL
-summary/trend state, not partial window calculations. A create/update/delete
+preservation, `Screen scroll={false}`, stable keys,
+`maintainVisibleContentPosition`, and explicit accessible older and newer
+controls; never rely only on `onEndReached`. Debounce search by 250 ms and label
+counts as loaded unless they come from a bounded count query. Home and Insights
+consume month-keyed SQL summary/trend/recent-row state, not partial window
+calculations. Budgets consumes month-keyed SQL budget usage/summary state and
+must not reduce the controller window; historical `initialMonth` use remains
+exact even when relevant expenses are outside that window. The edit route
+validates its ID and loads it directly with
+loading, not-found, and content-free failure states. A create/update/delete
 invalidates and re-fetches the first page and affected aggregates; it never
 calls `listTransactions()` or `snapshot()` as a normal reload. Lifecycle
 backup/import/delete APIs remain available but are not used for screen refresh.
+
+Task 3 must also remove Settings' dependency on `finance.transactions` for CSV.
+Until Task 5's bounded streaming writer exists, the interim rule is exact: a
+serialized export lease queues repository writes until a 0-500-row export has
+read every row exactly once, while 501+ throws `ExportScaleUnavailableError`
+before creating or sharing
+an artifact. Tests prove 201/500 success, 501 no-artifact failure, and that a
+concurrent mutation remains queued while the export completes with every
+pre-mutation row exactly once, then applies only after the lease releases. An
+export failure deletes its artifact and shares nothing. Partial CSV is never
+shareable. Task 5
+owns the final incremental 100k-row writer and Task 7 wires that service into
+Settings.
 
 - [ ] **Step 6: Run focused, migration-regression, and complete gates**
 
@@ -652,6 +729,7 @@ wholesale.
 - Create: `mobile/src/services/backupRecords.ts`
 - Create: `mobile/src/services/backupExporter.ts`
 - Create: `mobile/src/services/backupImporter.ts`
+- Create: `mobile/src/services/csvExporter.ts`
 - Create: `mobile/src/data/importStagingRepository.ts`
 - Modify: `mobile/src/services/artifacts.ts`
 - Create: `mobile/src/services/diagnostics.ts`
@@ -661,6 +739,7 @@ wholesale.
 - Modify: `mobile/app/_layout.tsx`
 - Create: `mobile/__tests__/backupCrypto.test.ts`
 - Create: `mobile/__tests__/backupStreaming.integration.test.ts`
+- Create: `mobile/__tests__/csvStreaming.integration.test.ts`
 - Modify: `mobile/__tests__/backup.test.ts`
 - Create: `mobile/__tests__/diagnostics.test.ts`
 - Modify: `mobile/__tests__/deleteAllData.test.ts`
@@ -668,7 +747,7 @@ wholesale.
 
 **Interfaces:**
 - Consumes: repository iterators of at most 500 records, an app-owned binary file handle, content-free database statistics, and bounded performance timings.
-- Produces: `exportEncryptedBackup(options): Promise<ArtifactReceipt>`, `inspectEncryptedBackup(file, password): Promise<BackupManifest>`, `importEncryptedBackup(options): Promise<ImportReceipt>`, `buildDiagnostics(input): DiagnosticsReport`, and retryable `deleteAllAppData(): Promise<DeleteAllResult>`.
+- Produces: `exportEncryptedBackup(options): Promise<ArtifactReceipt>`, `exportCsv(options): Promise<ArtifactReceipt>`, `inspectEncryptedBackup(file, password): Promise<BackupManifest>`, `importEncryptedBackup(options): Promise<ImportReceipt>`, `buildDiagnostics(input): DiagnosticsReport`, and retryable `deleteAllAppData(): Promise<DeleteAllResult>`.
 
 - [ ] **Step 1: Install exact locked crypto implementations**
 
@@ -689,11 +768,11 @@ await expect(importEncryptedBackup({ repository: target, fileUri: file.uri, pass
 expect(await target.getSentinelTransaction()).toEqual(sentinel);
 ```
 
-Also test a truncated final frame, 50 MiB + 1 byte rejection before file open, a 64 KiB + 1 plaintext record rejection, duplicate ID, unknown record kind, declared-count mismatch, and cleanup on cancellation/failure.
+Also test a truncated final frame, 50 MiB + 1 byte rejection before file open, a 64 KiB + 1 plaintext record rejection, duplicate ID, unknown record kind, declared-count mismatch, and cleanup on cancellation/failure. CSV tests use more than 200 and 500 rows, verify every row exactly once, max-safe locale-independent decimals, formula escaping, bounded 500-row reads, incremental writes, and no complete-ledger/controller-window hydration. The export holds one serialized stable SQLite read snapshot/lease so writes queue until completion; mutation-during-export tests prove no duplicate, skipped, or shared partial file.
 
 - [ ] **Step 3: Run backup tests and verify red**
 
-Run: `cd mobile && npm test -- --runInBand __tests__/backupCrypto.test.ts __tests__/backupStreaming.integration.test.ts __tests__/backup.test.ts`
+Run: `cd mobile && npm test -- --runInBand __tests__/backupCrypto.test.ts __tests__/backupStreaming.integration.test.ts __tests__/csvStreaming.integration.test.ts __tests__/backup.test.ts`
 
 Expected: FAIL because the streaming format and binary artifact interfaces do not exist.
 
@@ -715,7 +794,7 @@ Use `scryptAsync` and `xchacha20poly1305` from the locked Noble packages. Header
 
 - [ ] **Step 5: Implement paged NDJSON export and staged import**
 
-Add `ArtifactStore.createBinary(base: string, extension: 'finova'): Promise<OwnedBinaryArtifact>` with an `expo-file-system` `FileHandle`. Record kinds are exactly `manifest`, `ledger`, `transaction`, `budget_plan`, `recurring_template`, `expected_occurrence`, `savings_goal`, and `goal_contribution`. Each strict Zod record is at most 64 KiB UTF-8 plus newline.
+Add `ArtifactStore.createBinary(base: string, extension: 'finova' | 'csv'): Promise<OwnedBinaryArtifact>` with an `expo-file-system` `FileHandle`. Record kinds are exactly `manifest`, `ledger`, `transaction`, `budget_plan`, `recurring_template`, `expected_occurrence`, `savings_goal`, and `goal_contribution`. Each strict Zod record is at most 64 KiB UTF-8 plus newline. CSV writes its public header once, then reads stable repository pages of at most 500 and writes each escaped row with the locale-independent exact decimal helper; it never hydrates the bounded controller window or a complete CSV string.
 
 Import authenticated frames incrementally into staging tables. After EOF, run declared-count, duplicate, category, date, safe-integer, and `PRAGMA foreign_key_check` validations. Call `replaceFromStaging()` once in an exclusive transaction; any earlier failure calls `dropStaging()` and leaves active rows untouched. Keep the existing version-1 JSON parser only for import compatibility.
 
@@ -723,7 +802,7 @@ Import authenticated frames incrementally into staging tables. After EOF, run de
 
 Inject spies and assert no repository read asks for more than 500 records, no artifact survives share close/import failure, wrong-password errors do not distinguish header/ciphertext details, and password/key values never appear in thrown messages or diagnostic objects.
 
-Run: `cd mobile && npm test -- --runInBand __tests__/backupCrypto.test.ts __tests__/backupStreaming.integration.test.ts __tests__/backup.test.ts __tests__/artifacts.test.ts && npm run typecheck && npm audit --audit-level=high`
+Run: `cd mobile && npm test -- --runInBand __tests__/backupCrypto.test.ts __tests__/backupStreaming.integration.test.ts __tests__/csvStreaming.integration.test.ts __tests__/backup.test.ts __tests__/artifacts.test.ts && npm run typecheck && npm audit --audit-level=high`
 
 Expected: PASS and audit exits zero.
 
@@ -768,7 +847,7 @@ On root layout startup, call artifact cleanup before exposing export/import acti
 
 - [ ] **Step 11: Run the combined backup/privacy checks**
 
-Run: `cd mobile && npm test -- --runInBand __tests__/backupCrypto.test.ts __tests__/backupStreaming.integration.test.ts __tests__/backup.test.ts __tests__/diagnostics.test.ts __tests__/deleteAllData.test.ts __tests__/artifacts.test.ts && npm run typecheck && npm audit --audit-level=high`
+Run: `cd mobile && npm test -- --runInBand __tests__/backupCrypto.test.ts __tests__/backupStreaming.integration.test.ts __tests__/csvStreaming.integration.test.ts __tests__/backup.test.ts __tests__/diagnostics.test.ts __tests__/deleteAllData.test.ts __tests__/artifacts.test.ts && npm run typecheck && npm audit --audit-level=high`
 
 Expected: PASS.
 
@@ -894,7 +973,7 @@ line by line and never stage a directory wholesale.
 - Modify: `mobile/__tests__/accessibility.test.tsx`
 
 **Interfaces:**
-- Consumes: bounded ledger/planning/billing controllers and streaming service operations from Tasks 3-8.
+- Consumes: bounded ledger/planning/billing controllers and streaming service operations from Tasks 3-6.
 - Produces: accessible phone flows that expose every chosen feature without hydrating the complete ledger.
 
 - [ ] **Step 1: Write failing user-flow tests**
@@ -916,11 +995,13 @@ Add free/Plus tests for fourth-budget blocking, rollover choice, expected-bill a
 
 Run: `cd mobile && npm test -- --runInBand __tests__/transactionsFlow.test.tsx __tests__/expectedBillsFlow.test.tsx __tests__/budgetsFlow.test.tsx __tests__/savingsGoalsFlow.test.tsx __tests__/settingsFlow.test.tsx __tests__/accessibility.test.tsx`
 
-Expected: FAIL on missing routes/screens and current in-memory filtering/full-snapshot export.
+Expected: FAIL on missing planning routes/screens and missing Task 5 streaming
+Settings integration; Task 3 pagination/filtering and Task 5 export boundaries
+remain regression contracts, not work deferred to Task 7.
 
-- [ ] **Step 3: Convert transactions and dashboards to bounded repository state**
+- [ ] **Step 3: Integrate and regress bounded transactions and dashboards**
 
-Use `FlatList` with stable `keyExtractor`, `onEndReached`, loading footer, retry state, and distinct empty versus filtered-empty copy. Debounce search by 250 ms and pass it to `loadFirst`; never filter the controller array as a substitute for FTS. Home and Insights render SQL summary results. Mutation success retains focus and announces the changed row without reloading all pages.
+Preserve Task 3's `FlatList`, stable `keyExtractor`, explicit older/newer controls, loading footer, retry state, and distinct empty versus filtered-empty copy. Keep debounced search routed to `loadFirst`; never filter the controller array as a substitute for FTS. Home, Insights, and Budgets retain their keyed SQL result paths. Mutation success retains focus and announces the changed row without reloading all pages.
 
 - [ ] **Step 4: Add expected-bill and planning flows**
 
@@ -930,7 +1011,7 @@ Gate Plus creation/actions through `status === 'active'`; unknown/inactive state
 
 - [ ] **Step 5: Replace Settings' snapshot operations**
 
-Prompt twice for a 12-128-code-point backup password, show that it cannot be recovered, and call the streaming exporter without `finance.snapshot()`. Import previews manifest counts and ledger currency before a destructive confirmation. Add a diagnostics preview screen/alert before share. Delete copy must name transactions, plans, templates, expected bills, goals, contributions, preferences, and temporary artifacts, and state that Apple purchase history remains.
+Prompt twice for a 12-128-code-point backup password, show that it cannot be recovered, and call the Task 5 streaming backup exporter without `finance.snapshot()`. CSV calls the Task 5 streaming CSV service, never the bounded controller window. Import previews manifest counts and ledger currency before a destructive confirmation. Add a diagnostics preview screen/alert before share. Delete copy must name transactions, plans, templates, expected bills, goals, contributions, preferences, and temporary artifacts, and state that Apple purchase history remains.
 
 - [ ] **Step 6: Run interaction, accessibility, and navigation checks**
 
