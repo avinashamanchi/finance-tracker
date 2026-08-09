@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { EmptyState } from '../components/EmptyState';
 import { MetricCard } from '../components/MetricCard';
@@ -7,8 +7,8 @@ import { Screen } from '../components/Screen';
 import { TransactionRow } from '../components/TransactionRow';
 import { useFinance } from '../data/FinanceProvider';
 import { getCategory } from '../domain/categories';
-import { formatCents } from '../domain/money';
-import { buildSixMonthTrend, currentMonth, shiftMonth, summarizeMonth } from '../domain/summaries';
+import { formatMinor } from '../domain/money';
+import { currentMonth, shiftMonth } from '../domain/summaries';
 import { colors, radius, spacing } from '../design/tokens';
 
 function monthTitle(month: string): string {
@@ -21,19 +21,31 @@ export function HomeScreen({ initialMonth, onAdd, onInsights }: {
 }) {
   const finance = useFinance();
   const [month, setMonth] = useState(initialMonth ?? currentMonth());
-  const summary = useMemo(() => summarizeMonth(finance.transactions, month), [finance.transactions, month]);
-  const trend = useMemo(() => buildSixMonthTrend(finance.transactions, month), [finance.transactions, month]);
-  const monthTransactions = finance.transactions.filter((item) => item.occurredOn.startsWith(`${month}-`));
-  const budgetWarnings = finance.budgets
+  const view = finance.monthViews[month];
+  const trend = finance.trendViews[month] ?? [];
+  const { loadMonthView, loadTrendView } = finance;
+
+  useEffect(() => {
+    void loadMonthView(month);
+    void loadTrendView(month);
+  }, [loadMonthView, loadTrendView, month]);
+
+  if (!finance.ledger || (!view && !finance.monthErrors[month])) {
+    return <Screen><ActivityIndicator accessibilityLabel="Loading local finance data" color={colors.jade} /></Screen>;
+  }
+  if (!view) {
+    return <Screen><View style={styles.errorCard}><Text style={styles.errorText}>{finance.monthErrors[month] ?? finance.error ?? 'Finova could not load this month.'}</Text><Pressable accessibilityRole="button" onPress={() => void finance.loadMonthView(month)}><Text style={styles.retry}>Try again</Text></Pressable></View></Screen>;
+  }
+
+  const { summary, budgetUsage, recentTransactions } = view;
+  const budgetWarnings = budgetUsage.budgets
     .map((budget) => ({
       ...budget,
       spent: summary.expenseByCategory[budget.categoryId] ?? 0,
-      percent: Math.round(((summary.expenseByCategory[budget.categoryId] ?? 0) / budget.limitCents) * 100),
+      percent: Math.round(((summary.expenseByCategory[budget.categoryId] ?? 0) / budget.limitMinor) * 100),
     }))
     .filter((budget) => budget.percent >= 80)
     .sort((left, right) => right.percent - left.percent);
-
-  if (finance.loading) return <Screen><ActivityIndicator accessibilityLabel="Loading local finance data" color={colors.jade} /></Screen>;
 
   return (
     <Screen>
@@ -58,22 +70,22 @@ export function HomeScreen({ initialMonth, onAdd, onInsights }: {
         </Pressable>
       </View>
 
-      {finance.error ? (
-        <View style={styles.errorCard}><Text style={styles.errorText}>{finance.error}</Text><Pressable accessibilityRole="button" onPress={() => void finance.reload()}><Text style={styles.retry}>Try again</Text></Pressable></View>
+      {finance.monthErrors[month] || finance.error ? (
+        <View style={styles.errorCard}><Text style={styles.errorText}>{finance.monthErrors[month] ?? finance.error}</Text><Pressable accessibilityRole="button" onPress={() => void finance.loadMonthView(month)}><Text style={styles.retry}>Try again</Text></Pressable></View>
       ) : null}
 
       <View style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>MONTHLY BALANCE</Text>
-        <Text style={[styles.balance, summary.balanceCents < 0 && styles.negative]}>{formatCents(summary.balanceCents)}</Text>
+        <Text style={[styles.balance, summary.balanceMinor < 0 && styles.negative]}>{formatMinor(summary.balanceMinor, finance.ledger)}</Text>
         <Text style={styles.balanceDetail}>{summary.transactionCount} transaction{summary.transactionCount === 1 ? '' : 's'} · {summary.savingsRatePercent.toFixed(1)}% savings rate</Text>
       </View>
 
       <View style={styles.metrics}>
-        <MetricCard label="Income" value={formatCents(summary.incomeCents)} detail="Recorded this month" tone="positive" />
-        <MetricCard label="Spent" value={formatCents(summary.expenseCents)} detail="Recorded this month" tone="negative" />
+        <MetricCard label="Income" value={formatMinor(summary.incomeMinor, finance.ledger)} detail="Recorded this month" tone="positive" />
+        <MetricCard label="Spent" value={formatMinor(summary.expenseMinor, finance.ledger)} detail="Recorded this month" tone="negative" />
       </View>
 
-      {monthTransactions.length === 0 ? (
+      {summary.transactionCount === 0 ? (
         <EmptyState title="Your month starts here" detail="Add income or an expense to build your private monthly view." actionLabel="Add first transaction" onAction={onAdd} />
       ) : (
         <>
@@ -89,12 +101,12 @@ export function HomeScreen({ initialMonth, onAdd, onInsights }: {
           ) : null}
 
           <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Recent activity</Text></View>
-          {monthTransactions.slice(0, 4).map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} />)}
+          {recentTransactions.map((transaction) => <TransactionRow key={transaction.id} ledger={finance.ledger!} transaction={transaction} />)}
         </>
       )}
 
       <Pressable accessibilityLabel="Open six-month insights" accessibilityRole="button" onPress={onInsights} style={styles.insights}>
-        <View><Text style={styles.insightsEyebrow}>SIX-MONTH SIGNAL</Text><Text style={styles.insightsTitle}>See the shape of your cash flow</Text><Text style={styles.insightsDetail}>{trend.filter((point) => point.incomeCents || point.expenseCents).length} months with recorded activity</Text></View>
+        <View><Text style={styles.insightsEyebrow}>SIX-MONTH SIGNAL</Text><Text style={styles.insightsTitle}>See the shape of your cash flow</Text><Text style={styles.insightsDetail}>{trend.filter((point) => point.incomeMinor || point.expenseMinor).length} months with recorded activity</Text></View>
         <Ionicons color={colors.jade} name="arrow-forward" size={22} />
       </Pressable>
     </Screen>

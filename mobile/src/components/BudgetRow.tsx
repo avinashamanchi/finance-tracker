@@ -2,28 +2,33 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { ExpenseCategoryId } from '../domain/categories';
 import { colors, radius, spacing } from '../design/tokens';
-import { formatCents, parseAmountToCents } from '../domain/money';
+import { formatMinor, minorToDecimal, parseMinorAmount } from '../domain/money';
+import type { Ledger } from '../domain/types';
 
 export function BudgetRow({
   categoryId,
   label,
   color,
-  spentCents,
-  limitCents,
+  ledger,
+  spentMinor,
+  limitMinor,
   onSave,
 }: {
   categoryId: ExpenseCategoryId;
   label: string;
   color: string;
-  spentCents: number;
-  limitCents: number;
-  onSave(limitCents: number): Promise<void>;
+  ledger: Ledger;
+  spentMinor: number;
+  limitMinor: number;
+  onSave(limitMinor: number): Promise<void>;
 }) {
-  const [amount, setAmount] = useState(limitCents === 0 ? '0' : (limitCents / 100).toFixed(2));
+  const [amount, setAmount] = useState(
+    limitMinor === 0 ? '0' : minorToDecimal(limitMinor, ledger.currencyMinorUnit),
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const percent = limitCents === 0 ? 0 : Math.round((spentCents / limitCents) * 100);
-  const status = limitCents === 0
+  const percent = limitMinor === 0 ? 0 : Math.round((spentMinor / limitMinor) * 100);
+  const status = limitMinor === 0
     ? 'No limit set'
     : percent > 100
       ? `Over limit — ${percent}% used`
@@ -33,9 +38,10 @@ export function BudgetRow({
 
   const save = async () => {
     const normalized = amount.trim();
-    const parsed = normalized === '0' || normalized === '0.00'
-      ? { ok: true as const, cents: 0 }
-      : parseAmountToCents(normalized);
+    const zeroPattern = new RegExp(`^0(?:\\.0{1,${Math.max(1, ledger.currencyMinorUnit)}})?$`);
+    const parsed = zeroPattern.test(normalized)
+      ? { ok: true as const, minor: 0 }
+      : parseMinorAmount(normalized, ledger.currencyMinorUnit);
     if (!parsed.ok) {
       setError(parsed.message);
       return;
@@ -43,8 +49,8 @@ export function BudgetRow({
     setSaving(true);
     setError(null);
     try {
-      await onSave(parsed.cents);
-      setAmount(parsed.cents === 0 ? '0' : (parsed.cents / 100).toFixed(2));
+      await onSave(parsed.minor);
+      setAmount(parsed.minor === 0 ? '0' : minorToDecimal(parsed.minor, ledger.currencyMinorUnit));
     } catch {
       setError('Budget could not be saved. Try again.');
     } finally {
@@ -56,13 +62,13 @@ export function BudgetRow({
     <View style={styles.card}>
       <View style={styles.heading}>
         <View style={styles.titleRow}><View style={[styles.dot, { backgroundColor: color }]} /><Text style={styles.title}>{label}</Text></View>
-        <Text style={styles.spent}>{formatCents(spentCents)} spent</Text>
+        <Text style={styles.spent}>{formatMinor(spentMinor, ledger)} spent</Text>
       </View>
       <View style={styles.track}><View style={[styles.fill, { backgroundColor: percent >= 100 ? colors.coral : percent >= 80 ? colors.amber : color, width: `${Math.min(percent, 100)}%` }]} /></View>
       <Text style={[styles.status, percent > 100 ? styles.over : percent >= 80 ? styles.near : undefined]}>{status}</Text>
       <View style={styles.editor}>
         <View style={styles.amountWrap}>
-          <Text style={styles.symbol}>$</Text>
+          <Text style={styles.symbol}>{ledger.currencyCode}</Text>
           <TextInput
             accessibilityLabel={`${label} budget amount`}
             keyboardType="decimal-pad"

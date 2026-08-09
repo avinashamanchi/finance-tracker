@@ -6,7 +6,7 @@ describe('InsightsScreen', () => {
   it('renders six accessible monthly summaries including empty months', async () => {
     const view = await renderWithFinance(<InsightsScreen anchorMonth="2026-08" />, {
       transactions: [{
-        id: 'one', kind: 'income', amountCents: 50_000, categoryId: 'salary', description: 'Pay',
+        id: 'one', kind: 'income', amountMinor: 50_000, categoryId: 'salary', description: 'Pay',
         occurredOn: '2026-08-01', isRecurring: true,
         createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
       }],

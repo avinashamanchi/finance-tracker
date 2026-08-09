@@ -1,17 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { getCategory } from '../domain/categories';
-import { formatCents } from '../domain/money';
-import type { Transaction } from '../domain/types';
+import { formatMinor } from '../domain/money';
+import type { Ledger, Transaction } from '../domain/types';
 import { colors, radius, spacing } from '../design/tokens';
 
-export function TransactionRow({ transaction, onEdit, onDelete }: {
-  transaction: Transaction; onEdit?: () => void; onDelete?: () => void;
+export function TransactionRow({ transaction, ledger, onEdit, onDelete }: {
+  transaction: Transaction; ledger: Ledger; onEdit?: () => void; onDelete?: () => void;
 }) {
   const category = getCategory(transaction.categoryId);
   const signedAmount = transaction.kind === 'income'
-    ? formatCents(transaction.amountCents)
-    : `-${formatCents(transaction.amountCents)}`;
+    ? formatMinor(transaction.amountMinor, ledger)
+    : `-${formatMinor(transaction.amountMinor, ledger)}`;
   return (
     <View style={styles.row}>
       <Pressable

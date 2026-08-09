@@ -1,11 +1,22 @@
 import type { CategoryId, ExpenseCategoryId } from './categories';
 
+export type CurrencyMinorUnit = 0 | 1 | 2 | 3;
+
+export type Ledger = Readonly<{
+  id: string;
+  name: string;
+  currencyCode: string;
+  currencyMinorUnit: CurrencyMinorUnit;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
 export type TransactionKind = 'income' | 'expense';
 
 export type Transaction = Readonly<{
   id: string;
   kind: TransactionKind;
-  amountCents: number;
+  amountMinor: number;
   categoryId: CategoryId;
   description: string;
   occurredOn: string;
@@ -16,7 +27,7 @@ export type Transaction = Readonly<{
 
 export type TransactionDraft = Readonly<{
   kind: TransactionKind;
-  amountCents: number;
+  amountMinor: number;
   categoryId: CategoryId;
   description: string;
   occurredOn: string;
@@ -25,7 +36,7 @@ export type TransactionDraft = Readonly<{
 
 export type Budget = Readonly<{
   categoryId: ExpenseCategoryId;
-  limitCents: number;
+  limitMinor: number;
   updatedAt: string;
 }>;
 
@@ -36,9 +47,9 @@ export type FinanceSnapshot = Readonly<{
 
 export type MonthSummary = Readonly<{
   month: string;
-  incomeCents: number;
-  expenseCents: number;
-  balanceCents: number;
+  incomeMinor: number;
+  expenseMinor: number;
+  balanceMinor: number;
   savingsRatePercent: number;
   transactionCount: number;
   expenseByCategory: Readonly<Record<string, number>>;
@@ -46,7 +57,14 @@ export type MonthSummary = Readonly<{
 
 export type MonthlyPoint = Readonly<{
   month: string;
-  incomeCents: number;
-  expenseCents: number;
-  balanceCents: number;
+  incomeMinor: number;
+  expenseMinor: number;
+  balanceMinor: number;
+}>;
+
+export type BudgetUsage = Readonly<{
+  month: string;
+  budgets: readonly Budget[];
+  expenseByCategory: Readonly<Record<string, number>>;
+  totalLimitMinor: number;
 }>;

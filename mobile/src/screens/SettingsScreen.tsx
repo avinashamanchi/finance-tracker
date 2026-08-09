@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Screen } from '../components/Screen';
 import { useFinance } from '../data/FinanceProvider';
-import type { FinanceSnapshot, Transaction } from '../domain/types';
+import type { TransactionExport } from '../data/financeRepository';
+import type { FinanceSnapshot, Ledger } from '../domain/types';
 import { colors, radius, spacing } from '../design/tokens';
 import { ArtifactStore, shareTextArtifact } from '../services/artifacts';
 import { serializeBackup } from '../services/backup';
@@ -12,22 +13,28 @@ import { deleteAllAppData } from '../services/deleteAllData';
 import { pickFinovaBackup } from '../services/importBackup';
 
 export interface SettingsOperations {
-  exportBackup(snapshot: FinanceSnapshot): Promise<void>;
-  exportCsv(transactions: readonly Transaction[]): Promise<void>;
+  exportBackup(snapshot: FinanceSnapshot, ledger: Ledger): Promise<void>;
+  exportCsv(value: TransactionExport): Promise<void>;
   pickBackup(): Promise<FinanceSnapshot | null>;
   cleanupArtifacts(): Promise<void>;
 }
 
-const artifactStore = new ArtifactStore();
+let artifactStore: ArtifactStore | undefined;
+
+function getArtifactStore(): ArtifactStore {
+  artifactStore ??= new ArtifactStore();
+  return artifactStore;
+}
+
 const defaultOperations: SettingsOperations = {
-  exportBackup: async (snapshot) => {
-    await shareTextArtifact(artifactStore, undefined, 'finova-backup', 'json', serializeBackup(snapshot), 'application/json');
+  exportBackup: async (snapshot, ledger) => {
+    await shareTextArtifact(getArtifactStore(), undefined, 'finova-backup', 'json', serializeBackup(snapshot, ledger), 'application/json');
   },
-  exportCsv: async (transactions) => {
-    await shareTextArtifact(artifactStore, undefined, 'finova-transactions', 'csv', transactionsToCsv(transactions), 'text/csv');
+  exportCsv: async ({ transactions, ledger }) => {
+    await shareTextArtifact(getArtifactStore(), undefined, 'finova-transactions', 'csv', transactionsToCsv(transactions, ledger), 'text/csv');
   },
   pickBackup: pickFinovaBackup,
-  cleanupArtifacts: () => artifactStore.cleanupAll(),
+  cleanupArtifacts: () => getArtifactStore().cleanupAll(),
 };
 
 export function SettingsScreen({ onPrivacy, onSupport, operations = defaultOperations }: {
@@ -103,8 +110,10 @@ export function SettingsScreen({ onPrivacy, onSupport, operations = defaultOpera
       {status ? <View accessibilityLiveRegion="polite" style={styles.status}><Text style={styles.statusText}>{status}</Text></View> : null}
 
       <Section title="Move your data" detail="Export creates a temporary file and opens the iOS share sheet.">
-        <ActionRow icon="document-text-outline" label="Export JSON backup" detail="Transactions and budgets in a versioned Finova file" accessibilityLabel="Export Finova backup" testID="settings-export-backup" disabled={busy !== null} onPress={() => void perform('backup', async () => operations.exportBackup(await finance.snapshot()), 'The backup share sheet closed. Finova cannot confirm delivery or storage by another app.')} />
-        <ActionRow icon="grid-outline" label="Export transaction CSV" detail="Spreadsheet-compatible ledger; budgets are not included" accessibilityLabel="Export transaction CSV" testID="settings-export-csv" disabled={busy !== null || finance.transactions.length === 0} onPress={() => void perform('csv', () => operations.exportCsv(finance.transactions), 'The CSV share sheet closed. Finova cannot confirm delivery or storage by another app.')} />
+        <ActionRow icon="document-text-outline" label="Export JSON backup" detail="Transactions and budgets in a versioned Finova file" accessibilityLabel="Export Finova backup" testID="settings-export-backup" disabled={busy !== null || !finance.ledger} onPress={() => void perform('backup', async () => operations.exportBackup(await finance.snapshot(), finance.ledger!), 'The backup share sheet closed. Finova cannot confirm delivery or storage by another app.')} />
+        <ActionRow icon="grid-outline" label="Export transaction CSV" detail="Spreadsheet-compatible ledger; budgets are not included" accessibilityLabel="Export transaction CSV" testID="settings-export-csv" disabled={busy !== null} onPress={() => {
+          void perform('csv', async () => operations.exportCsv(await finance.readTransactionsForCsv()), 'The CSV share sheet closed. Finova cannot confirm delivery or storage by another app.');
+        }} />
         <ActionRow icon="download-outline" label="Import JSON backup" detail="Validates first, then asks before replacing all active data" accessibilityLabel="Import Finova backup" testID="settings-import-backup" disabled={busy !== null} onPress={() => void importBackup()} />
         <Text style={styles.footnote}>The share sheet opening does not prove another app saved, delivered, or protected the file.</Text>
       </Section>

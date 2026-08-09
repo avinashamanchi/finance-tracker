@@ -1,28 +1,44 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { MetricCard } from '../components/MetricCard';
 import { Screen } from '../components/Screen';
 import { TrendBars } from '../components/TrendBars';
 import { useFinance } from '../data/FinanceProvider';
-import { formatCents } from '../domain/money';
-import { buildSixMonthTrend, currentMonth } from '../domain/summaries';
+import { addMinorExact, formatMinor } from '../domain/money';
+import { currentMonth } from '../domain/summaries';
 import { colors, radius, spacing } from '../design/tokens';
 
 export function InsightsScreen({ anchorMonth }: { anchorMonth?: string }) {
   const finance = useFinance();
-  const points = buildSixMonthTrend(finance.transactions, anchorMonth ?? currentMonth());
-  const income = points.reduce((total, point) => total + point.incomeCents, 0);
-  const expenses = points.reduce((total, point) => total + point.expenseCents, 0);
-  const activeMonths = points.filter((point) => point.incomeCents || point.expenseCents).length;
+  const month = anchorMonth ?? currentMonth();
+  const points = finance.trendViews[month];
+  const { loadTrendView } = finance;
+  useEffect(() => { void loadTrendView(month); }, [loadTrendView, month]);
+  if (!finance.ledger || (!points && !finance.trendErrors[month])) {
+    return <Screen><ActivityIndicator accessibilityLabel="Loading six-month finance trend" color={colors.jade} /></Screen>;
+  }
+  if (!points) {
+    return <Screen><Text accessibilityRole="alert" style={styles.noteText}>{finance.trendErrors[month] ?? 'Finova could not load this trend.'}</Text></Screen>;
+  }
+  let income: number;
+  let expenses: number;
+  try {
+    income = addMinorExact(points.map((point) => point.incomeMinor));
+    expenses = addMinorExact(points.map((point) => point.expenseMinor));
+  } catch {
+    return <Screen><Text accessibilityRole="alert" style={styles.noteText}>This six-month total is outside Finova’s exact supported range.</Text></Screen>;
+  }
+  const activeMonths = points.filter((point) => point.incomeMinor || point.expenseMinor).length;
   return (
     <Screen>
       <View style={styles.header}><Text style={styles.eyebrow}>RECORDED ACTIVITY</Text><Text style={styles.title}>Six-month view</Text><Text style={styles.subtitle}>A deterministic summary of entries in this app—not a forecast or financial recommendation.</Text></View>
       <View style={styles.metrics}>
-        <MetricCard label="Income" value={formatCents(income)} detail="Across six months" tone="positive" />
-        <MetricCard label="Expenses" value={formatCents(expenses)} detail="Across six months" tone="negative" />
+        <MetricCard label="Income" value={formatMinor(income, finance.ledger)} detail="Across six months" tone="positive" />
+        <MetricCard label="Expenses" value={formatMinor(expenses, finance.ledger)} detail="Across six months" tone="negative" />
       </View>
       <View style={styles.chartCard}>
         <View style={styles.chartHeader}><Text style={styles.sectionTitle}>Income vs. expenses</Text><View style={styles.legend}><Text style={styles.incomeLegend}>● Income</Text><Text style={styles.expenseLegend}>● Expenses</Text></View></View>
-        <TrendBars points={points} />
+        <TrendBars ledger={finance.ledger} points={points} />
       </View>
       <View style={styles.note}><Text style={styles.noteTitle}>{activeMonths} of 6 months have data</Text><Text style={styles.noteText}>Missing or incorrect entries change every total shown here. Review your ledger before relying on a summary.</Text></View>
     </Screen>

@@ -1,5 +1,7 @@
 import { getCategory } from '../domain/categories';
-import type { Transaction } from '../domain/types';
+import { minorToDecimal } from '../domain/money';
+import type { Ledger, Transaction } from '../domain/types';
+import { validateLedger } from '../data/validation';
 
 const FORMULA_PREFIX = /^[=+\-@\t\r]/;
 
@@ -12,8 +14,12 @@ function csvCell(value: string): string {
   return /[",\r\n]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
 }
 
-export function transactionsToCsv(transactions: readonly Transaction[]): string {
-  const rows = ['Date,Type,Category,Description,Amount USD,Recurring'];
+export function transactionsToCsv(
+  transactions: readonly Transaction[],
+  suppliedLedger: Ledger,
+): string {
+  const ledger = validateLedger(suppliedLedger);
+  const rows = [`Date,Type,Category,Description,Amount ${ledger.currencyCode},Recurring`];
   for (const transaction of transactions) {
     const category = getCategory(transaction.categoryId);
     rows.push([
@@ -21,7 +27,7 @@ export function transactionsToCsv(transactions: readonly Transaction[]): string 
       transaction.kind === 'income' ? 'Income' : 'Expense',
       category?.label ?? transaction.categoryId,
       transaction.description,
-      (transaction.amountCents / 100).toFixed(2),
+      minorToDecimal(transaction.amountMinor, ledger.currencyMinorUnit),
       transaction.isRecurring ? 'Yes' : 'No',
     ].map((value) => csvCell(value)).join(','));
   }

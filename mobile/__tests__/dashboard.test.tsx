@@ -6,17 +6,17 @@ import { renderWithFinance } from '../test-utils/renderWithFinance';
 const snapshot: FinanceSnapshot = {
   transactions: [
     {
-      id: 'income', kind: 'income', amountCents: 100_000, categoryId: 'salary',
+      id: 'income', kind: 'income', amountMinor: 100_000, categoryId: 'salary',
       description: 'Paycheck', occurredOn: '2026-08-01', isRecurring: true,
       createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
     },
     {
-      id: 'expense', kind: 'expense', amountCents: 25_000, categoryId: 'groceries',
+      id: 'expense', kind: 'expense', amountMinor: 25_000, categoryId: 'groceries',
       description: 'Market', occurredOn: '2026-08-02', isRecurring: false,
       createdAt: '2026-08-02T00:00:00.000Z', updatedAt: '2026-08-02T00:00:00.000Z',
     },
   ],
-  budgets: [{ categoryId: 'groceries', limitCents: 30_000, updatedAt: '2026-08-01T00:00:00.000Z' }],
+  budgets: [{ categoryId: 'groceries', limitMinor: 30_000, updatedAt: '2026-08-01T00:00:00.000Z' }],
 };
 
 describe('HomeScreen', () => {

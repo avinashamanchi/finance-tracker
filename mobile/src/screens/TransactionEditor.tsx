@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFinance } from '../data/FinanceProvider';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../domain/categories';
-import { parseAmountToCents } from '../domain/money';
-import type { Transaction, TransactionKind } from '../domain/types';
+import { minorToDecimal, parseMinorAmount } from '../domain/money';
+import type { Ledger, Transaction, TransactionKind } from '../domain/types';
 import { isValidDateKey } from '../data/validation';
 import { colors, radius, spacing } from '../design/tokens';
 
@@ -14,12 +14,24 @@ function todayKey(): string {
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 }
 
-export function TransactionEditor({ transaction, onSaved, onCancel }: {
+type TransactionEditorProps = {
   transaction?: Transaction; onSaved: (transaction: Transaction) => void; onCancel: () => void;
-}) {
+};
+
+export function TransactionEditor(props: TransactionEditorProps) {
+  const finance = useFinance();
+  if (!finance.ledger) {
+    return <SafeAreaView edges={['bottom']} style={styles.safe}><ActivityIndicator accessibilityLabel="Loading Finova ledger" color={colors.jade} /></SafeAreaView>;
+  }
+  return <ReadyTransactionEditor {...props} ledger={finance.ledger} />;
+}
+
+function ReadyTransactionEditor({ transaction, onSaved, onCancel, ledger }: TransactionEditorProps & { ledger: Ledger }) {
   const finance = useFinance();
   const [kind, setKind] = useState<TransactionKind>(transaction?.kind ?? 'expense');
-  const [amount, setAmount] = useState(transaction ? (transaction.amountCents / 100).toFixed(2) : '');
+  const [amount, setAmount] = useState(
+    transaction ? minorToDecimal(transaction.amountMinor, ledger.currencyMinorUnit) : '',
+  );
   const [description, setDescription] = useState(transaction?.description ?? '');
   const [date, setDate] = useState(transaction?.occurredOn ?? todayKey());
   const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? 'groceries');
@@ -36,7 +48,7 @@ export function TransactionEditor({ transaction, onSaved, onCancel }: {
 
   const save = async () => {
     const nextErrors: Record<string, string> = {};
-    const parsed = parseAmountToCents(amount);
+    const parsed = parseMinorAmount(amount, ledger.currencyMinorUnit);
     if (!parsed.ok) nextErrors.amount = parsed.message;
     const trimmedDescription = description.trim();
     if (Array.from(trimmedDescription).length < 1 || Array.from(trimmedDescription).length > 120) nextErrors.description = 'Add a description between 1 and 120 characters.';
@@ -48,7 +60,7 @@ export function TransactionEditor({ transaction, onSaved, onCancel }: {
     setSaving(true);
     setErrors({});
     try {
-      const draft = { kind, amountCents: parsed.cents, categoryId, description: trimmedDescription, occurredOn: date, isRecurring };
+      const draft = { kind, amountMinor: parsed.minor, categoryId, description: trimmedDescription, occurredOn: date, isRecurring };
       const saved = transaction
         ? await finance.updateTransaction(transaction.id, draft)
         : await finance.createTransaction(draft);
@@ -85,7 +97,7 @@ export function TransactionEditor({ transaction, onSaved, onCancel }: {
           </View>
 
           <Field label="Amount" error={errors.amount}>
-            <View style={styles.amountWrap}><Text style={styles.currency}>$</Text><TextInput accessibilityLabel="Amount" keyboardType="decimal-pad" onChangeText={(value) => { setAmount(value); setErrors((current) => ({ ...current, amount: '' })); }} placeholder="0.00" placeholderTextColor={colors.textMuted} style={styles.input} testID="transaction-amount" value={amount} /></View>
+            <View style={styles.amountWrap}><Text style={styles.currency}>{ledger.currencyCode}</Text><TextInput accessibilityLabel="Amount" keyboardType="decimal-pad" onChangeText={(value) => { setAmount(value); setErrors((current) => ({ ...current, amount: '' })); }} placeholder={minorToDecimal(0, ledger.currencyMinorUnit)} placeholderTextColor={colors.textMuted} style={styles.input} testID="transaction-amount" value={amount} /></View>
           </Field>
 
           <Field label="Description" error={errors.description}>

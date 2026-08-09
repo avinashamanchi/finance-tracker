@@ -1,15 +1,22 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-
-jest.mock('expo-crypto', () => ({
-  randomUUID: () => '90000000-0000-4000-8000-000000000009',
-}));
-
 import { LATEST_SCHEMA_VERSION, runMigrations } from '../src/data/migrations';
 import type { MigrationContext, MigrationDatabase } from '../src/data/migrations/types';
 import { SQLiteFinanceRepository } from '../src/data/financeRepository';
+import {
+  BackupScaleUnavailableError,
+  ExportScaleUnavailableError,
+  LedgerCapacityError,
+} from '../src/domain/errors';
 import { NodeMigrationAdapter } from './support/nodeMigrationAdapter';
+
+jest.mock('expo-crypto', () => ({
+  CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+  CryptoEncoding: { HEX: 'hex' },
+  digestStringAsync: async () => 'a'.repeat(64),
+  randomUUID: () => '90000000-0000-4000-8000-000000000009',
+}));
 
 const SHIPPED_V1_SQL = readFileSync(
   join(__dirname, 'fixtures', 'shippedV1Schema.sql'),
@@ -993,7 +1000,10 @@ describe('ordered SQLite migrations', () => {
     await repository.initialize();
 
     expect(await database.first('PRAGMA user_version')).toEqual({ user_version: 4 });
-    expect((await repository.listTransactions()).map((transaction) => transaction.id)).toEqual([
+    const ledger = await repository.getLedger();
+    expect((await repository.listTransactionsPage({
+      ledgerId: ledger.id, limit: 50, kinds: [], search: '',
+    })).items.map((transaction) => transaction.id)).toEqual([
       'tx-rent',
       'tx-coffee',
       'tx-income',
@@ -1001,12 +1011,12 @@ describe('ordered SQLite migrations', () => {
     expect(await repository.listBudgets()).toEqual([
       {
         categoryId: 'groceries',
-        limitCents: 50000,
+        limitMinor: 50000,
         updatedAt: '2026-08-01T11:00:00.000Z',
       },
       {
         categoryId: 'housing',
-        limitCents: 150000,
+        limitMinor: 150000,
         updatedAt: '2026-08-01T12:00:00.000Z',
       },
     ]);
@@ -1111,7 +1121,7 @@ describe('ordered SQLite migrations', () => {
     let creationSettled = false;
     const creation = repository.createTransaction({
       kind: 'expense',
-      amountCents: 975,
+      amountMinor: 975,
       categoryId: 'groceries',
       description: 'Concurrent create',
       occurredOn: '2026-08-07',
@@ -1157,7 +1167,7 @@ describe('ordered SQLite migrations', () => {
     let creationSettled = false;
     const creation = repository.createTransaction({
       kind: 'expense',
-      amountCents: 1475,
+      amountMinor: 1475,
       categoryId: 'groceries',
       description: 'Created after rollback',
       occurredOn: '2026-08-07',
@@ -1192,7 +1202,7 @@ describe('ordered SQLite migrations', () => {
       transactions: [{
         id: 'replacement-tx',
         kind: 'expense',
-        amountCents: 3200,
+        amountMinor: 3200,
         categoryId: 'groceries',
         description: 'Replacement',
         occurredOn: '2026-09-01',
@@ -1202,7 +1212,7 @@ describe('ordered SQLite migrations', () => {
       }],
       budgets: [{
         categoryId: 'groceries',
-        limitCents: 64000,
+        limitMinor: 64000,
         updatedAt: '2026-09-01T12:00:00.000Z',
       }],
     });
@@ -1246,7 +1256,7 @@ describe('ordered SQLite migrations', () => {
       transactions: [{
         id: 'failed-replacement',
         kind: 'expense',
-        amountCents: 3200,
+        amountMinor: 3200,
         categoryId: 'groceries',
         description: 'Failed replacement',
         occurredOn: '2026-08-07',
@@ -1283,7 +1293,7 @@ describe('ordered SQLite migrations', () => {
       transactions: [],
       budgets: [{
         categoryId: 'groceries',
-        limitCents: 64000,
+        limitMinor: 64000,
         updatedAt: CONTEXT.nowIso,
       }],
     });
@@ -1332,7 +1342,7 @@ describe('ordered SQLite migrations', () => {
       transactions: [{
         id: 'snapshot-replacement',
         kind: 'expense',
-        amountCents: 8100,
+        amountMinor: 8100,
         categoryId: 'groceries',
         description: 'Snapshot replacement',
         occurredOn: '2026-08-07',
@@ -1342,7 +1352,7 @@ describe('ordered SQLite migrations', () => {
       }],
       budgets: [{
         categoryId: 'groceries',
-        limitCents: 88000,
+        limitMinor: 88000,
         updatedAt: CONTEXT.nowIso,
       }],
     });
@@ -1363,7 +1373,7 @@ describe('ordered SQLite migrations', () => {
       .toEqual(['snapshot-replacement']);
     expect(result.budgets).toEqual([{
       categoryId: 'groceries',
-      limitCents: 88000,
+      limitMinor: 88000,
       updatedAt: CONTEXT.nowIso,
     }]);
   });
@@ -1393,7 +1403,7 @@ describe('ordered SQLite migrations', () => {
       transactions: [{
         id: 'replacement-failure',
         kind: 'expense',
-        amountCents: 3200,
+        amountMinor: 3200,
         categoryId: 'groceries',
         description: 'Replacement failure',
         occurredOn: '2026-08-07',
@@ -1447,5 +1457,153 @@ describe('ordered SQLite migrations', () => {
 
     clock = new Date(2026, 7, 31, 23, 59, 59);
     expect((await repository.listBudgets()).map((budget) => budget.categoryId)).toEqual(['groceries']);
+  });
+
+  it('atomically admits row 100000 and rejects concurrent creates beyond the cap', async () => {
+    const repository = new SQLiteFinanceRepository(expoDatabaseFrom(database) as never, CONTEXT);
+    await repository.initialize();
+    await database.exec(`
+      WITH RECURSIVE numbers(value) AS (
+        VALUES(1) UNION ALL SELECT value + 1 FROM numbers WHERE value < 99999
+      )
+      INSERT INTO transactions(
+        id, ledger_id, kind, amount_minor, category_id, description, occurred_on,
+        legacy_recurring, source_template_id, source_due_on, created_at, updated_at
+      ) SELECT printf('cap-%06d', value), '${CONTEXT.legacyLedgerId}', 'expense', 1,
+        'groceries', 'Capacity', '2026-08-01', 0, NULL, NULL,
+        '${CONTEXT.nowIso}', '${CONTEXT.nowIso}' FROM numbers;
+    `);
+    const draft = {
+      kind: 'expense' as const,
+      amountMinor: 1,
+      categoryId: 'groceries' as const,
+      description: 'Final row',
+      occurredOn: '2026-08-07',
+      isRecurring: false,
+    };
+    await expect(repository.createTransaction(draft)).resolves.toMatchObject({
+      id: '90000000-0000-4000-8000-000000000009',
+    });
+    const attempts = await Promise.allSettled([
+      repository.createTransaction(draft),
+      repository.createTransaction(draft),
+    ]);
+    expect(attempts.every((result) => (
+      result.status === 'rejected' && result.reason instanceof LedgerCapacityError
+    ))).toBe(true);
+    expect(await database.first('SELECT COUNT(*) AS count FROM transactions'))
+      .toEqual({ count: 100000 });
+  });
+
+  it('keeps over-cap ledgers pageable and deletable while blocking new writes', async () => {
+    const repository = new SQLiteFinanceRepository(expoDatabaseFrom(database) as never, CONTEXT);
+    await repository.initialize();
+    await database.exec(`
+      WITH RECURSIVE numbers(value) AS (
+        VALUES(1) UNION ALL SELECT value + 1 FROM numbers WHERE value < 100001
+      )
+      INSERT INTO transactions(
+        id, ledger_id, kind, amount_minor, category_id, description, occurred_on,
+        legacy_recurring, source_template_id, source_due_on, created_at, updated_at
+      ) SELECT printf('over-%06d', value), '${CONTEXT.legacyLedgerId}', 'expense', 1,
+        'groceries', 'Over cap', '2026-08-01', 0, NULL, NULL,
+        '${CONTEXT.nowIso}', '${CONTEXT.nowIso}' FROM numbers;
+    `);
+    const ledger = await repository.getLedger();
+    const page = await repository.listTransactionsPage({
+      ledgerId: ledger.id, limit: 50, kinds: [], search: '',
+    });
+    expect(page.items).toHaveLength(50);
+    await expect(repository.createTransaction({
+      kind: 'expense', amountMinor: 1, categoryId: 'groceries', description: 'Blocked',
+      occurredOn: '2026-08-07', isRecurring: false,
+    })).rejects.toBeInstanceOf(LedgerCapacityError);
+    await repository.deleteTransaction(page.items[0].id);
+    expect(await repository.getTransactionById(page.items[0].id)).toBeNull();
+  });
+
+  it('bounds interim SQLite CSV and v1 backup snapshots before artifacts can be built', async () => {
+    const repository = new SQLiteFinanceRepository(expoDatabaseFrom(database) as never, CONTEXT);
+    await repository.initialize();
+    await database.exec(`
+      WITH RECURSIVE numbers(value) AS (
+        VALUES(1) UNION ALL SELECT value + 1 FROM numbers WHERE value < 10001
+      )
+      INSERT INTO transactions(
+        id, ledger_id, kind, amount_minor, category_id, description, occurred_on,
+        legacy_recurring, source_template_id, source_due_on, created_at, updated_at
+      ) SELECT printf('export-%06d', value), '${CONTEXT.legacyLedgerId}', 'expense', 1,
+        'groceries', 'Export', '2026-08-01', 0, NULL, NULL,
+        '${CONTEXT.nowIso}', '${CONTEXT.nowIso}' FROM numbers;
+    `);
+    await expect(repository.readTransactionsForCsv())
+      .rejects.toBeInstanceOf(ExportScaleUnavailableError);
+    await expect(repository.snapshot()).rejects.toBeInstanceOf(BackupScaleUnavailableError);
+  });
+
+  it.each([201, 500])('returns all %i rows from the bounded interim CSV lease', async (count) => {
+    const repository = new SQLiteFinanceRepository(expoDatabaseFrom(database) as never, CONTEXT);
+    await repository.initialize();
+    await database.exec(`
+      WITH RECURSIVE numbers(value) AS (
+        VALUES(1) UNION ALL SELECT value + 1 FROM numbers WHERE value < ${count}
+      )
+      INSERT INTO transactions(
+        id, ledger_id, kind, amount_minor, category_id, description, occurred_on,
+        legacy_recurring, source_template_id, source_due_on, created_at, updated_at
+      ) SELECT printf('csv-%06d', value), '${CONTEXT.legacyLedgerId}', 'expense', value,
+        'groceries', 'CSV', '2026-08-01', 0, NULL, NULL,
+        '${CONTEXT.nowIso}', '${CONTEXT.nowIso}' FROM numbers;
+    `);
+    const exported = await repository.readTransactionsForCsv();
+    expect(exported.transactions).toHaveLength(count);
+    expect(new Set(exported.transactions.map((transaction) => transaction.id)).size).toBe(count);
+  });
+
+  it('queues mutation writes until the serialized interim CSV lease completes', async () => {
+    const source = expoDatabaseFrom(database);
+    const repository = new SQLiteFinanceRepository(source as never, CONTEXT);
+    await repository.initialize();
+    await database.run(
+      `INSERT INTO transactions(
+        id, ledger_id, kind, amount_minor, category_id, description, occurred_on,
+        legacy_recurring, source_template_id, source_due_on, created_at, updated_at
+      ) VALUES('csv-existing', ?, 'expense', 1, 'groceries', 'Existing', '2026-08-01',
+        0, NULL, NULL, ?, ?)`,
+      [CONTEXT.legacyLedgerId, CONTEXT.nowIso, CONTEXT.nowIso],
+    );
+    const exportHeld = deferred();
+    const resumeExport = deferred();
+    const originalGetAll = source.getAllAsync as (
+      sql: string,
+      ...params: readonly unknown[]
+    ) => Promise<readonly unknown[]>;
+    source.getAllAsync = async (sql: string, ...params: readonly unknown[]) => {
+      const result = await originalGetAll(sql, ...params);
+      if (sql.includes('FROM transactions') && sql.includes('LIMIT ?')) {
+        exportHeld.resolve();
+        await resumeExport.promise;
+      }
+      return result;
+    };
+
+    const exporting = repository.readTransactionsForCsv();
+    await exportHeld.promise;
+    let creationSettled = false;
+    const creating = repository.createTransaction({
+      kind: 'expense', amountMinor: 2, categoryId: 'groceries', description: 'Queued',
+      occurredOn: '2026-08-02', isRecurring: false,
+    }).then((value) => {
+      creationSettled = true;
+      return value;
+    });
+    await flushAsyncWork();
+    const settledDuringLease = creationSettled;
+    resumeExport.resolve();
+    const [exported] = await Promise.all([exporting, creating]);
+
+    expect(settledDuringLease).toBe(false);
+    expect(exported.transactions.map((transaction) => transaction.id)).toEqual(['csv-existing']);
+    expect(await database.first('SELECT COUNT(*) AS count FROM transactions')).toEqual({ count: 2 });
   });
 });

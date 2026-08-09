@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { FinanceSnapshot } from '../domain/types';
-import { validateSnapshot } from '../data/validation';
+import type { FinanceSnapshot, Ledger } from '../domain/types';
+import { validateLedger, validateSnapshot } from '../data/validation';
 
 export const BACKUP_VERSION = 1;
 export const MAX_BACKUP_BYTES = 1_048_576;
@@ -42,12 +42,28 @@ function utf8ByteLength(value: string): number {
 
 export function serializeBackup(
   snapshot: FinanceSnapshot,
+  suppliedLedger: Ledger,
   now: () => string = () => new Date().toISOString(),
 ): string {
   const valid = validateSnapshot(snapshot);
+  const ledger = validateLedger(suppliedLedger);
+  if (ledger.currencyCode !== 'USD' || ledger.currencyMinorUnit !== 2) {
+    throw new Error('Finova version 1 backups support only USD ledgers with two minor units.');
+  }
   const exportedAt = now();
   if (Number.isNaN(Date.parse(exportedAt))) throw new Error('Invalid backup timestamp.');
-  const raw = JSON.stringify({ version: BACKUP_VERSION, exportedAt, ...valid }, null, 2);
+  const raw = JSON.stringify({
+    version: BACKUP_VERSION,
+    exportedAt,
+    transactions: valid.transactions.map(({ amountMinor, ...transaction }) => ({
+      ...transaction,
+      amountCents: amountMinor,
+    })),
+    budgets: valid.budgets.map(({ limitMinor, ...budget }) => ({
+      ...budget,
+      limitCents: limitMinor,
+    })),
+  }, null, 2);
   if (utf8ByteLength(raw) > MAX_BACKUP_BYTES) {
     throw new Error('Finova backups cannot exceed 1 MiB.');
   }
@@ -78,7 +94,13 @@ export function parseBackup(raw: string): FinanceSnapshot {
   const parsed = BackupSchema.safeParse(candidate);
   if (!parsed.success) throw new Error('This is not a valid Finova backup.');
   return validateSnapshot({
-    transactions: parsed.data.transactions,
-    budgets: parsed.data.budgets,
+    transactions: parsed.data.transactions.map(({ amountCents, ...transaction }) => ({
+      ...transaction,
+      amountMinor: amountCents,
+    })),
+    budgets: parsed.data.budgets.map(({ limitCents, ...budget }) => ({
+      ...budget,
+      limitMinor: limitCents,
+    })),
   } as FinanceSnapshot);
 }
