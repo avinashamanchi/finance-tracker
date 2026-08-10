@@ -66,6 +66,7 @@ describe('iOS publication package', () => {
     expect(auditGate).toContain('1138808');
     expect(auditGate).toContain('1138809');
     expect(auditGate).toContain('--audit-level=high');
+    expect(auditGate).toContain('report.error');
   });
 
   it('ships a safe static landing page plus public legal documents', () => {

@@ -27,12 +27,30 @@ try {
   process.exit(2);
 }
 
-const vulnerabilities = report.vulnerabilities ?? {};
+if (typeof report !== 'object' || report === null || Array.isArray(report)) {
+  process.stderr.write('Mobile dependency audit returned an invalid report shape.\n');
+  process.exit(2);
+}
+if (
+  report.error !== undefined ||
+  typeof report.vulnerabilities !== 'object' ||
+  report.vulnerabilities === null ||
+  Array.isArray(report.vulnerabilities)
+) {
+  process.stderr.write('Mobile dependency audit returned an error or incomplete report.\n');
+  process.exit(2);
+}
+
+const vulnerabilities = report.vulnerabilities;
 const severe = new Map(Object.entries(vulnerabilities).filter(([, value]) => (
   value?.severity === 'high' || value?.severity === 'critical'
 )));
 
 if (severe.size === 0) {
+  if (result.status !== 0) {
+    process.stderr.write('Mobile dependency audit exited nonzero without a reviewable severe finding.\n');
+    process.exit(2);
+  }
   process.stdout.write('Mobile dependency audit passed with no high or critical findings.\n');
   process.exit(0);
 }
