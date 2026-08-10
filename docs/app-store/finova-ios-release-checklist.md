@@ -55,6 +55,11 @@ Fresh local verification on 2026-08-10:
 - [ ] `BLOCKED` — EAS project initialization, iOS credentials, registered test device, and credentialed production build.
 - [ ] `BLOCKED` — App Store Connect record has primary language, SKU, availability, seller/copyright, export compliance, content rights, age rating, category, Digital Services Act trader status, and App Privacy answers.
 - [ ] `BLOCKED` — the exact archive privacy report and bundled third-party privacy manifests agree with Purchase History for Analytics/App Functionality, not linked, and not tracking.
+- [ ] `BLOCKED` — Apple's updated age-rating questionnaire is completed for the exact submitted version.
+- [ ] `BLOCKED` — Accessibility Nutrition Label answers are based on the signed-device VoiceOver, Voice Control, Larger Text, contrast, and Reduce Motion results above; no unverified support is claimed.
+- [ ] `BLOCKED` — product page name, icon, subtitle, description, promotional text, keywords, and 1–10 screenshots are complete, accurate, localized where offered, and contain no placeholder or private finance data.
+- [ ] `BLOCKED` — required device capabilities and every generated Info.plist usage description match the exact archive and are exercised on a current iOS 26 device.
+- [ ] `BLOCKED` — Mac with Apple silicon and Apple Vision Pro availability are explicitly disabled for v1 unless the exact signed iPhone build and local-data behavior are separately tested and supported there.
 - [ ] `BLOCKED` — Finova Plus non-consumable, RevenueCat entitlement/offering, localized price, Family Sharing choice, sandbox purchase/cancel/restore/reinstall behavior, and App Review purchase screenshot.
 - [ ] `BLOCKED` — Privacy, Terms, and Support returned HTTP 404 during the anonymous 2026-08-10 release check; publish the safe static legal host and recheck all three over HTTPS.
 - [ ] `BLOCKED` — 1–10 accepted iPhone screenshots captured from the exact TestFlight binary using `screenshot-matrix.md`.
