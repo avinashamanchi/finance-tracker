@@ -28,6 +28,10 @@ import {
 import { runMigrations } from './migrations';
 import type { MigrationContext, MigrationDatabase } from './migrations/types';
 import { SQLitePlanningRepository } from './planningRepository';
+import {
+  SQLiteImportStagingRepository,
+  type ImportStagingSession,
+} from './importStagingRepository';
 import type {
   CursorDirection,
   TransactionCursor,
@@ -37,6 +41,15 @@ import type {
 } from './queryTypes';
 import { TransactionQueryService } from './transactionQueries';
 import { SQLiteRecurringRepository } from './recurringRepository';
+import type {
+  BackupRecordPage,
+  BackupRecordSource,
+} from '../services/backupExporter';
+import type {
+  DataBackupRecord,
+  DataBackupRecordKind,
+} from '../services/backupRecords';
+import type { BackupCounts } from '../services/backupFormat';
 import {
   MAX_LEDGER_TRANSACTIONS,
   isUuidV4,
@@ -111,6 +124,222 @@ type LedgerRow = Readonly<{
 }>;
 
 type CountRow = Readonly<{ count: number }>;
+
+type BackupCountRow = Readonly<{
+  ledger: number;
+  transaction_count: number;
+  budget_plan: number;
+  recurring_template: number;
+  expected_occurrence: number;
+  savings_goal: number;
+  goal_contribution: number;
+}>;
+
+type BackupRow = Readonly<Record<string, string | number | null> & { row_id: number }>;
+
+function requireBackupCount(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0 || value > 1_000_000) {
+    throw new DataBoundaryError();
+  }
+  return value;
+}
+
+class SQLiteBackupRecordSource implements BackupRecordSource {
+  constructor(
+    private readonly database: MigrationDatabase,
+    private readonly ledgerId: string,
+  ) {}
+
+  async countRecords(): Promise<BackupCounts> {
+    const row = await this.database.first<BackupCountRow>(`
+      SELECT
+        (SELECT COUNT(*) FROM ledgers WHERE id = ?) AS ledger,
+        (SELECT COUNT(*) FROM transactions WHERE ledger_id = ?) AS transaction_count,
+        (SELECT COUNT(*) FROM budget_plans WHERE ledger_id = ?) AS budget_plan,
+        (SELECT COUNT(*) FROM recurring_templates WHERE ledger_id = ?) AS recurring_template,
+        (SELECT COUNT(*) FROM expected_occurrences AS o
+          JOIN recurring_templates AS t ON t.id = o.template_id WHERE t.ledger_id = ?) AS expected_occurrence,
+        (SELECT COUNT(*) FROM savings_goals WHERE ledger_id = ?) AS savings_goal,
+        (SELECT COUNT(*) FROM goal_contributions AS c
+          JOIN savings_goals AS g ON g.id = c.goal_id WHERE g.ledger_id = ?) AS goal_contribution
+    `, Array(7).fill(this.ledgerId));
+    if (!row) throw new DataBoundaryError();
+    return {
+      manifest: 1,
+      ledger: requireBackupCount(row.ledger),
+      transaction: requireBackupCount(row.transaction_count),
+      budget_plan: requireBackupCount(row.budget_plan),
+      recurring_template: requireBackupCount(row.recurring_template),
+      expected_occurrence: requireBackupCount(row.expected_occurrence),
+      savings_goal: requireBackupCount(row.savings_goal),
+      goal_contribution: requireBackupCount(row.goal_contribution),
+    };
+  }
+
+  async readRecordPage(
+    kind: DataBackupRecordKind,
+    afterRowId: number | null,
+    limit: number,
+  ): Promise<BackupRecordPage> {
+    if (
+      (afterRowId !== null && (!Number.isSafeInteger(afterRowId) || afterRowId < 1))
+      || !Number.isSafeInteger(limit)
+      || limit < 1
+      || limit > 500
+    ) throw new DataBoundaryError();
+    const after = afterRowId ?? 0;
+    const rows = await this.readRows(kind, after, limit + 1);
+    const selected = rows.slice(0, limit);
+    const records = selected.map((row) => this.mapRecord(kind, row));
+    const last = selected[selected.length - 1];
+    if (rows.length > limit && !last) throw new DataBoundaryError();
+    return {
+      records,
+      nextCursor: rows.length > limit ? last.row_id : null,
+    };
+  }
+
+  private readRows(kind: DataBackupRecordKind, after: number, limit: number): Promise<readonly BackupRow[]> {
+    const params = [this.ledgerId, after, limit] as const;
+    switch (kind) {
+      case 'ledger':
+        return this.database.all<BackupRow>(`
+          SELECT rowid AS row_id, id, name, currency_code, currency_minor_unit, created_at, updated_at
+          FROM ledgers WHERE id = ? AND rowid > ? ORDER BY rowid LIMIT ?
+        `, params);
+      case 'transaction':
+        return this.database.all<BackupRow>(`
+          SELECT rowid AS row_id, id, ledger_id, kind AS transaction_kind, amount_minor,
+            category_id, description, occurred_on, legacy_recurring, source_template_id,
+            source_due_on, created_at, updated_at
+          FROM transactions WHERE ledger_id = ? AND rowid > ? ORDER BY rowid LIMIT ?
+        `, params);
+      case 'budget_plan':
+        return this.database.all<BackupRow>(`
+          SELECT rowid AS row_id, ledger_id, category_id, month, limit_minor,
+            rollover_policy, updated_at
+          FROM budget_plans WHERE ledger_id = ? AND rowid > ? ORDER BY rowid LIMIT ?
+        `, params);
+      case 'recurring_template':
+        return this.database.all<BackupRow>(`
+          SELECT rowid AS row_id, id, ledger_id, description, category_id, amount_minor,
+            due_day, start_month, end_month, enabled, created_at, updated_at
+          FROM recurring_templates WHERE ledger_id = ? AND rowid > ? ORDER BY rowid LIMIT ?
+        `, params);
+      case 'expected_occurrence':
+        return this.database.all<BackupRow>(`
+          SELECT o.rowid AS row_id, o.id, o.template_id, o.due_on, o.transaction_id,
+            o.created_at, o.updated_at
+          FROM expected_occurrences AS o
+          JOIN recurring_templates AS t ON t.id = o.template_id
+          WHERE t.ledger_id = ? AND o.rowid > ? ORDER BY o.rowid LIMIT ?
+        `, params);
+      case 'savings_goal':
+        return this.database.all<BackupRow>(`
+          SELECT rowid AS row_id, id, ledger_id, name, target_minor, target_on,
+            archived_at, created_at, updated_at
+          FROM savings_goals WHERE ledger_id = ? AND rowid > ? ORDER BY rowid LIMIT ?
+        `, params);
+      case 'goal_contribution':
+        return this.database.all<BackupRow>(`
+          SELECT c.rowid AS row_id, c.id, c.goal_id, c.amount_minor, c.occurred_on,
+            c.note, c.created_at
+          FROM goal_contributions AS c
+          JOIN savings_goals AS g ON g.id = c.goal_id
+          WHERE g.ledger_id = ? AND c.rowid > ? ORDER BY c.rowid LIMIT ?
+        `, params);
+    }
+  }
+
+  private mapRecord(kind: DataBackupRecordKind, row: BackupRow): DataBackupRecord {
+    if (!Number.isSafeInteger(row.row_id) || row.row_id < 1) throw new DataBoundaryError();
+    switch (kind) {
+      case 'ledger':
+        return {
+          kind,
+          id: String(row.id),
+          name: String(row.name),
+          currencyCode: String(row.currency_code),
+          currencyMinorUnit: Number(row.currency_minor_unit),
+          createdAt: String(row.created_at),
+          updatedAt: String(row.updated_at),
+        };
+      case 'transaction':
+        return {
+          kind,
+          id: String(row.id),
+          ledgerId: String(row.ledger_id),
+          transactionKind: String(row.transaction_kind) as 'income' | 'expense',
+          amountMinor: Number(row.amount_minor),
+          categoryId: String(row.category_id),
+          description: String(row.description),
+          occurredOn: String(row.occurred_on),
+          isRecurring: row.legacy_recurring === 1,
+          sourceTemplateId: row.source_template_id === null ? null : String(row.source_template_id),
+          sourceDueOn: row.source_due_on === null ? null : String(row.source_due_on),
+          createdAt: String(row.created_at),
+          updatedAt: String(row.updated_at),
+        };
+      case 'budget_plan':
+        return {
+          kind,
+          ledgerId: String(row.ledger_id),
+          categoryId: String(row.category_id) as never,
+          month: String(row.month),
+          limitMinor: Number(row.limit_minor),
+          rolloverPolicy: String(row.rollover_policy) as 'none' | 'carry_unused',
+          updatedAt: String(row.updated_at),
+        };
+      case 'recurring_template':
+        return {
+          kind,
+          id: String(row.id),
+          ledgerId: String(row.ledger_id),
+          description: String(row.description),
+          categoryId: String(row.category_id) as never,
+          amountMinor: Number(row.amount_minor),
+          dueDay: Number(row.due_day),
+          startMonth: String(row.start_month),
+          endMonth: row.end_month === null ? null : String(row.end_month),
+          enabled: row.enabled === 1,
+          createdAt: String(row.created_at),
+          updatedAt: String(row.updated_at),
+        };
+      case 'expected_occurrence':
+        return {
+          kind,
+          id: String(row.id),
+          templateId: String(row.template_id),
+          dueOn: String(row.due_on),
+          transactionId: row.transaction_id === null ? null : String(row.transaction_id),
+          createdAt: String(row.created_at),
+          updatedAt: String(row.updated_at),
+        };
+      case 'savings_goal':
+        return {
+          kind,
+          id: String(row.id),
+          ledgerId: String(row.ledger_id),
+          name: String(row.name),
+          targetMinor: Number(row.target_minor),
+          targetOn: row.target_on === null ? null : String(row.target_on),
+          archivedAt: row.archived_at === null ? null : String(row.archived_at),
+          createdAt: String(row.created_at),
+          updatedAt: String(row.updated_at),
+        };
+      case 'goal_contribution':
+        return {
+          kind,
+          id: String(row.id),
+          goalId: String(row.goal_id),
+          amountMinor: Number(row.amount_minor),
+          occurredOn: String(row.occurred_on),
+          note: String(row.note),
+          createdAt: String(row.created_at),
+        };
+    }
+  }
+}
 
 function currentLocalMonth(now: Date): string {
   const year = now.getFullYear();
@@ -228,6 +457,21 @@ export class SQLiteFinanceRepository implements FinanceRepository {
     return new SQLitePlanningRepository(this.migrationDatabase, this.requireLedger().id, {
       now: this.clock,
     });
+  }
+
+  async withStableBackupSnapshot<T>(
+    work: (source: BackupRecordSource) => Promise<T>,
+  ): Promise<T> {
+    return this.withSerializedAccess(() => this.migrationDatabase.exclusive((database) => (
+      work(new SQLiteBackupRecordSource(database, this.requireLedger().id))
+    )));
+  }
+
+  beginBackupImport(): Promise<ImportStagingSession> {
+    return SQLiteImportStagingRepository.begin(
+      this.migrationDatabase,
+      this.requireLedger().id,
+    );
   }
 
   async listTransactionsPage(query: TransactionQuery): Promise<TransactionPage> {
@@ -462,6 +706,7 @@ export class SQLiteFinanceRepository implements FinanceRepository {
   async deleteAll(): Promise<void> {
     await this.withSerializedAccess(async () => {
       await this.migrationDatabase.exclusive((database) => this.clearLedgerFinanceRows(database));
+      await this.migrationDatabase.exec('PRAGMA wal_checkpoint(TRUNCATE)');
     });
   }
 

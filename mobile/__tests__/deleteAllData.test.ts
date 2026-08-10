@@ -9,7 +9,7 @@ describe('Delete All Data coordination', () => {
       preferences: { clear: async () => { calls.push('preferences'); } },
     });
     expect(calls).toEqual(['finance', 'artifacts', 'preferences']);
-    expect(result).toEqual({ ok: true, failed: [] });
+    expect(result).toEqual({ ok: true, failed: [], retryable: false });
   });
 
   it('continues after failures and returns retryable subsystem names', async () => {
@@ -20,6 +20,6 @@ describe('Delete All Data coordination', () => {
       preferences: { clear: preferences },
     });
     expect(preferences).toHaveBeenCalled();
-    expect(result).toEqual({ ok: false, failed: ['finance', 'artifacts'] });
+    expect(result).toEqual({ ok: false, failed: ['finance', 'artifacts'], retryable: true });
   });
 });

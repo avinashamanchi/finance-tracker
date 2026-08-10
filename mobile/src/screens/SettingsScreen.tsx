@@ -6,17 +6,33 @@ import { useFinance } from '../data/FinanceProvider';
 import type { TransactionExport } from '../data/financeRepository';
 import type { FinanceSnapshot, Ledger } from '../domain/types';
 import { colors, radius, spacing } from '../design/tokens';
-import { ArtifactStore, shareTextArtifact } from '../services/artifacts';
+import { ArtifactStore, shareOwnedArtifact, shareTextArtifact } from '../services/artifacts';
 import { serializeBackup } from '../services/backup';
 import { transactionsToCsv } from '../services/csv';
+import { exportEncryptedBackup } from '../services/backupExporter';
+import { exportCsv as exportStreamingCsv } from '../services/csvExporter';
 import { deleteAllAppData } from '../services/deleteAllData';
-import { pickFinovaBackup } from '../services/importBackup';
+import {
+  pickEncryptedBackupForImport,
+  pickFinovaBackup,
+  type PendingEncryptedBackup,
+} from '../services/importBackup';
+import type { StableBackupRepository } from '../services/backupExporter';
+import type { ImportableBackupRepository } from '../services/backupImporter';
+import { FinovaPreferenceStore } from '../services/preferences';
 
 export interface SettingsOperations {
   exportBackup(snapshot: FinanceSnapshot, ledger: Ledger): Promise<void>;
   exportCsv(value: TransactionExport): Promise<void>;
   pickBackup(): Promise<FinanceSnapshot | null>;
   cleanupArtifacts(): Promise<void>;
+  exportEncryptedBackup?(
+    repository: StableBackupRepository,
+    password: string,
+  ): Promise<void>;
+  exportStreamingCsv?(repository: StableBackupRepository): Promise<void>;
+  pickEncryptedBackup?(password: string): Promise<PendingEncryptedBackup | null>;
+  clearPreferences?(): Promise<void>;
 }
 
 let artifactStore: ArtifactStore | undefined;
@@ -35,6 +51,24 @@ const defaultOperations: SettingsOperations = {
   },
   pickBackup: pickFinovaBackup,
   cleanupArtifacts: () => getArtifactStore().cleanupAll(),
+  exportEncryptedBackup: async (repository, password) => {
+    const store = getArtifactStore();
+    const receipt = await exportEncryptedBackup({ repository, artifacts: store, password });
+    await shareOwnedArtifact(store, undefined, receipt.uri, {
+      mimeType: 'application/octet-stream',
+      UTI: 'com.avinashamanchi.finova.backup',
+    });
+  },
+  exportStreamingCsv: async (repository) => {
+    const store = getArtifactStore();
+    const receipt = await exportStreamingCsv({ repository, artifacts: store });
+    await shareOwnedArtifact(store, undefined, receipt.uri, {
+      mimeType: 'text/csv',
+      UTI: 'public.comma-separated-values-text',
+    });
+  },
+  pickEncryptedBackup: pickEncryptedBackupForImport,
+  clearPreferences: () => new FinovaPreferenceStore().clear(),
 };
 
 export function SettingsScreen({
@@ -56,6 +90,13 @@ export function SettingsScreen({
   const [deletePhrase, setDeletePhrase] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [backupPassword, setBackupPassword] = useState('');
+  const securePortability = Boolean(
+    operations.exportEncryptedBackup
+    && operations.pickEncryptedBackup,
+  );
+  const passwordReady = Array.from(backupPassword).length >= 12
+    && Array.from(backupPassword).length <= 128;
 
   const perform = async (name: string, operation: () => Promise<void>, success: string) => {
     setBusy(name);
@@ -74,6 +115,33 @@ export function SettingsScreen({
     setBusy('import');
     setStatus(null);
     try {
+      if (securePortability) {
+        if (!finance.portability || !operations.pickEncryptedBackup) {
+          throw new Error('Encrypted portability is unavailable in this build.');
+        }
+        const pending = await operations.pickEncryptedBackup(backupPassword);
+        if (!pending) {
+          setStatus('No backup was selected. Your data is unchanged.');
+          return;
+        }
+        const count = Object.values(pending.manifest.counts).reduce((sum, value) => sum + value, 0);
+        Alert.alert(
+          'Replace all Finova data?',
+          `This authenticated backup contains ${count} records. Replacing this installation cannot be undone.`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => void pending.discard() },
+            {
+              text: 'Replace',
+              style: 'destructive',
+              onPress: () => void perform('replace', async () => {
+                await pending.importInto(finance.portability! as ImportableBackupRepository);
+                await finance.refreshAfterDataReplacement();
+              }, 'The authenticated backup replaced this installation’s active data.'),
+            },
+          ],
+        );
+        return;
+      }
       const snapshot = await operations.pickBackup();
       if (!snapshot) {
         setStatus('No backup was selected. Your data is unchanged.');
@@ -104,7 +172,7 @@ export function SettingsScreen({
     const result = await deleteAllAppData({
       finance: { deleteAll: finance.deleteAllFinanceData },
       artifacts: { cleanupAll: operations.cleanupArtifacts },
-      preferences: { clear: async () => {} },
+      preferences: { clear: operations.clearPreferences ?? (async () => {}) },
     });
     if (result.ok) {
       setDeletePhrase('');
@@ -122,12 +190,41 @@ export function SettingsScreen({
       {status ? <View accessibilityLiveRegion="polite" style={styles.status}><Text style={styles.statusText}>{status}</Text></View> : null}
 
       <Section title="Move your data" detail="Export creates a temporary file and opens the iOS share sheet.">
-        <ActionRow icon="document-text-outline" label="Export JSON backup" detail="Transactions and budgets in a versioned Finova file" accessibilityLabel="Export Finova backup" testID="settings-export-backup" disabled={busy !== null || !finance.ledger} onPress={() => void perform('backup', async () => operations.exportBackup(await finance.snapshot(), finance.ledger!), 'The backup share sheet closed. Finova cannot confirm delivery or storage by another app.')} />
+        {securePortability ? (
+          <View style={styles.passwordPanel}>
+            <Text style={styles.passwordLabel}>Backup password</Text>
+            <TextInput
+              accessibilityLabel="Backup password"
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={setBackupPassword}
+              placeholder="12–128 characters"
+              placeholderTextColor={colors.textMuted}
+              secureTextEntry
+              style={styles.deleteInput}
+              value={backupPassword}
+            />
+            <Text style={styles.footnote}>Finova cannot recover this password. The same password is required to inspect or import the encrypted file.</Text>
+          </View>
+        ) : null}
+        <ActionRow icon="document-text-outline" label={securePortability ? 'Export encrypted backup' : 'Export JSON backup'} detail={securePortability ? 'Authenticated Finova file with transactions, plans, bills, and goals' : 'Transactions and budgets in a versioned Finova file'} accessibilityLabel="Export Finova backup" testID="settings-export-backup" disabled={busy !== null || !finance.ledger || (securePortability && (!passwordReady || !finance.portability))} onPress={() => void perform('backup', async () => {
+          if (securePortability && operations.exportEncryptedBackup && finance.portability) {
+            await operations.exportEncryptedBackup(finance.portability, backupPassword);
+          } else {
+            await operations.exportBackup(await finance.snapshot(), finance.ledger!);
+          }
+        }, 'The backup share sheet closed. Finova cannot confirm delivery or storage by another app.')} />
         <ActionRow icon="grid-outline" label="Export transaction CSV" detail={isPlus ? 'Spreadsheet-compatible ledger; budgets are not included' : 'Finova Plus feature; JSON backup remains free'} accessibilityLabel="Export transaction CSV" testID="settings-export-csv" disabled={busy !== null} onPress={() => {
           if (!isPlus) { onPlans(); return; }
-          void perform('csv', async () => operations.exportCsv(await finance.readTransactionsForCsv()), 'The CSV share sheet closed. Finova cannot confirm delivery or storage by another app.');
+          void perform('csv', async () => {
+            if (operations.exportStreamingCsv && finance.portability) {
+              await operations.exportStreamingCsv(finance.portability);
+            } else {
+              await operations.exportCsv(await finance.readTransactionsForCsv());
+            }
+          }, 'The CSV share sheet closed. Finova cannot confirm delivery or storage by another app.');
         }} />
-        <ActionRow icon="download-outline" label="Import JSON backup" detail="Validates first, then asks before replacing all active data" accessibilityLabel="Import Finova backup" testID="settings-import-backup" disabled={busy !== null} onPress={() => void importBackup()} />
+        <ActionRow icon="download-outline" label={securePortability ? 'Import encrypted backup' : 'Import JSON backup'} detail="Authenticates and validates first, then asks before replacing all active data" accessibilityLabel="Import Finova backup" testID="settings-import-backup" disabled={busy !== null || (securePortability && (!passwordReady || !finance.portability))} onPress={() => void importBackup()} />
         <Text style={styles.footnote}>The share sheet opening does not prove another app saved, delivered, or protected the file.</Text>
       </Section>
 
@@ -163,6 +260,7 @@ const styles = StyleSheet.create({
   header: { gap: 4, paddingTop: spacing.sm }, eyebrow: { color: colors.jade, fontSize: 11, fontWeight: '900', letterSpacing: 1.5 }, title: { color: colors.text, fontSize: 29, fontWeight: '900', letterSpacing: -0.8 }, subtitle: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
   status: { backgroundColor: colors.jadeDark, borderColor: colors.jade, borderRadius: radius.md, borderWidth: 1, padding: spacing.md }, statusText: { color: colors.text, fontSize: 13, lineHeight: 19 },
   section: { backgroundColor: colors.panel, borderColor: colors.border, borderRadius: radius.lg, borderWidth: 1, overflow: 'hidden' }, sectionHeading: { gap: 3, padding: spacing.md }, sectionTitle: { color: colors.text, fontSize: 17, fontWeight: '900' }, sectionDetail: { color: colors.textMuted, fontSize: 12 },
+  passwordPanel: { borderTopColor: colors.border, borderTopWidth: 1, gap: spacing.xs, padding: spacing.md }, passwordLabel: { color: colors.text, fontSize: 13, fontWeight: '800' },
   action: { alignItems: 'center', borderTopColor: colors.border, borderTopWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 76, padding: spacing.md }, actionIcon: { alignItems: 'center', backgroundColor: colors.jadeDark, borderRadius: 12, height: 40, justifyContent: 'center', width: 40 }, actionCopy: { flex: 1, gap: 3 }, actionLabel: { color: colors.text, fontSize: 14, fontWeight: '800' }, actionDetail: { color: colors.textMuted, fontSize: 11, lineHeight: 16 }, disabled: { opacity: 0.42 }, footnote: { color: colors.textMuted, fontSize: 11, lineHeight: 16, padding: spacing.md },
   danger: { backgroundColor: '#2B1C22', borderColor: '#643641', borderRadius: radius.lg, borderWidth: 1, gap: spacing.sm, padding: spacing.md }, dangerTitle: { color: colors.coral, fontSize: 17, fontWeight: '900' }, dangerDetail: { color: colors.textMuted, fontSize: 12, lineHeight: 18 }, deleteLabel: { color: colors.text, fontSize: 13, fontWeight: '800', marginTop: spacing.xs }, deleteInput: { backgroundColor: colors.ink, borderColor: '#643641', borderRadius: radius.sm, borderWidth: 1, color: colors.text, fontSize: 16, minHeight: 50, paddingHorizontal: spacing.md }, deleteButton: { alignItems: 'center', backgroundColor: colors.coral, borderRadius: radius.sm, justifyContent: 'center', minHeight: 50 }, deleteButtonText: { color: colors.ink, fontSize: 14, fontWeight: '900' },
 });

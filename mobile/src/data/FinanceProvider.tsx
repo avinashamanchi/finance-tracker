@@ -25,6 +25,8 @@ import type {
 import type { FinanceRepository, TransactionExport } from './financeRepository';
 import { openFinanceRepository } from './financeRepository';
 import type { TransactionCursor, TransactionQuery } from './queryTypes';
+import type { StableBackupRepository } from '../services/backupExporter';
+import type { ImportableBackupRepository } from '../services/backupImporter';
 
 const PAGE_SIZE = 50 as const;
 const MAX_WINDOW = 200;
@@ -77,9 +79,21 @@ export type FinanceController = Readonly<{
   deleteAllFinanceData(): Promise<void>;
   snapshot(): Promise<FinanceSnapshot>;
   readTransactionsForCsv(): Promise<TransactionExport>;
+  portability: (StableBackupRepository & ImportableBackupRepository) | null;
+  refreshAfterDataReplacement(): Promise<void>;
 }>;
 
 const FinanceContext = createContext<FinanceController | null>(null);
+
+function portabilityRepository(
+  repository: FinanceRepository,
+): (StableBackupRepository & ImportableBackupRepository) | null {
+  const candidate = repository as FinanceRepository & Partial<StableBackupRepository & ImportableBackupRepository>;
+  return typeof candidate.withStableBackupSnapshot === 'function'
+    && typeof candidate.beginBackupImport === 'function'
+    ? candidate as FinanceRepository & StableBackupRepository & ImportableBackupRepository
+    : null;
+}
 
 function uniqueTransactions(transactions: readonly Transaction[]): Transaction[] {
   const seen = new Set<string>();
@@ -421,6 +435,25 @@ export function FinanceProvider({
     setLoading(false);
   }, [commitBoundaries, commitTransactions, repository]);
 
+  const refreshAfterDataReplacement = useCallback(async () => {
+    transactionGeneration.current += 1;
+    for (const key of Object.keys(monthGeneration.current)) monthGeneration.current[key] += 1;
+    for (const key of Object.keys(trendGeneration.current)) trendGeneration.current[key] += 1;
+    await repository.initialize();
+    const nextLedger = await repository.getLedger();
+    ledgerRef.current = nextLedger;
+    setLedger(nextLedger);
+    monthViewsRef.current = {};
+    trendViewsRef.current = {};
+    setMonthViews({});
+    setTrendViews({});
+    setMonthLoading({});
+    setTrendLoading({});
+    setMonthErrors({});
+    setTrendErrors({});
+    await loadFirst(filtersRef.current);
+  }, [loadFirst, repository]);
+
   const value = useMemo<FinanceController>(() => ({
     ledger,
     transactions,
@@ -453,6 +486,8 @@ export function FinanceProvider({
     deleteAllFinanceData,
     snapshot: () => repository.snapshot(),
     readTransactionsForCsv: () => repository.readTransactionsForCsv(),
+    portability: portabilityRepository(repository),
+    refreshAfterDataReplacement,
   }), [
     boundaries,
     createTransaction,
@@ -474,6 +509,7 @@ export function FinanceProvider({
     reload,
     replaceAll,
     repository,
+    refreshAfterDataReplacement,
     setBudget,
     setTransactionFilters,
     transactionFilters,

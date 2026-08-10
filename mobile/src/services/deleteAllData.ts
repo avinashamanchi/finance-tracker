@@ -2,6 +2,7 @@ export type DeleteSubsystem = 'finance' | 'artifacts' | 'preferences';
 export type DeleteAllResult = Readonly<{
   ok: boolean;
   failed: DeleteSubsystem[];
+  retryable: boolean;
 }>;
 
 type Dependencies = Readonly<{
@@ -24,5 +25,5 @@ export async function deleteAllAppData(dependencies: Dependencies): Promise<Dele
       failed.push(name);
     }
   }
-  return { ok: failed.length === 0, failed };
+  return { ok: failed.length === 0, failed, retryable: failed.length > 0 };
 }
