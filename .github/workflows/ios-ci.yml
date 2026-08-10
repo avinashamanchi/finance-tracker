@@ -27,6 +27,9 @@ jobs:
       - name: Test mobile behavior
         working-directory: mobile
         run: npm test -- --runInBand
+      - name: Enforce 100k ledger and bounded UI gates
+        working-directory: mobile
+        run: npm run test:scale
       - name: Assert supported surface
         working-directory: mobile
         run: npm test -- --runInBand __tests__/legacyWebQuarantine.test.ts

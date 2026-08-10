@@ -11,6 +11,8 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "test": "jest",
+    "test:scale": "jest --runInBand __tests__/largeLedgerQueries.integration.test.ts __tests__/largeLedgerMigration.integration.test.ts __tests__/noFullReload.test.ts",
+    "profile:scale": "node scripts/profile-large-ledger.mjs --output finova-scale-profile.json",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
     "expo:doctor": "npx --yes expo-doctor@latest",

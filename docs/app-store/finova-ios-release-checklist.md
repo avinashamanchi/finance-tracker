@@ -2,16 +2,16 @@
 
 Status vocabulary: `PASS`, `FAIL`, `BLOCKED`, `UNVERIFIED`. A local green check is not evidence of signing, submission, Apple approval, or publication.
 
-The automated record below predates the current Finova Plus and Terms changes. Treat it as historical evidence only; every gate must be rerun for the new candidate.
+The automated record below covers the current local candidate. It is local evidence only and does not replace signed-device, provider, App Store Connect, or Apple review evidence.
 
 ## Code-complete local gates
 
-- [x] Native Expo Router experience with Home, Transactions, Budgets, Insights, Settings, Privacy, and Support.
+- [x] Native Expo Router experience with Home, Transactions, Budgets, Expected Bills, Savings Goals, Insights, Settings, Privacy, Terms, and Support.
 - [x] Expo Go-compatible free core flows and paywall preview; StoreKit purchase and restore require a signed development/TestFlight build.
 - [x] Empty-by-default local SQLite ledger with validated add, edit, search, filter, delete, and idempotent migration boundaries.
 - [x] Amounts persist as positive safe-integer cents; summaries and six-month trends are deterministic.
 - [x] Category budgets expose numeric on-track, near-limit, and over-limit states rather than relying on color.
-- [x] Strict 1 MiB versioned JSON backup import validates fully before atomic replacement.
+- [x] Password-encrypted, authenticated, framed backup export/import streams in bounded pages, validates counts/ownership/foreign keys in staging, and replaces active data atomically only after confirmation.
 - [x] CSV escaping neutralizes spreadsheet-formula prefixes in user text.
 - [x] Export/import artifacts use an app-owned cache namespace and cleanup paths.
 - [x] Delete All requires the exact phrase `DELETE`, attempts every owned subsystem, reports partial failure, and permits retry.
@@ -23,16 +23,17 @@ The automated record below predates the current Finova Plus and Terms changes. T
 - [x] Reusable budget and export screens default to Free, and the production routes pass the verified entitlement explicitly; missing billing state cannot grant Plus.
 - [x] Finova has no account, so Sign in with Apple and in-app account deletion are not applicable to this binary; `usesAppleSignIn` is explicitly false and Delete All remains available for local data.
 - [x] The local-only ledger has no central application database or API bandwidth bottleneck at 25,000 monthly users; payment availability and entitlement scale remain Apple/RevenueCat provider concerns to validate externally.
+- [x] Deterministic Node SQLite gates exercise an exact 100,000-row current schema and frozen shipped-v1→v4 migration with 50-row keyset paging, FTS, SQL aggregates, index plans, content digest, reopen/no-op migration, and no-full-reload UI rules. Node evidence does not satisfy the physical-iPhone gate.
 - [x] Opaque 1024×1024 RGB icon with no text or transparency.
 - [x] CI and manual no-deploy release-readiness workflows contain clean install, test, typecheck, lint, Expo Doctor, iOS export, a fail-closed high/critical advisory gate, prebuild stability, YAML, and redacted secret gates.
 
 ## Automated verification record
 
-Fresh local verification on 2026-08-09:
+Fresh local verification on 2026-08-10:
 
-- Mobile: 29 suites / 214 tests, TypeScript, lint, Expo Doctor 18/18, and a cache-cleared 1,311-module iOS export with a 5.24 MB Hermes bundle.
+- Mobile: 44 suites / 249 tests, plus 3 focused scale suites / 4 tests; TypeScript, lint, Expo Doctor 18/18, and a cache-cleared 1,349-module iOS export with a 5.54 MB Hermes bundle.
 - Dependency gate: raw npm audit reports 11 high-severity transitive package entries, all rooted only in `image-size` advisories GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq through Expo/Metro. npm proposes a breaking Expo/React Native downgrade and no safe published in-range resolution exists. The checked-in gate accepts only those two advisory sources and fails closed on any new high or critical advisory.
-- Release structure: both workflow YAML files parse, the tracked secret scan passes, and the icon is an opaque 1024×1024 PNG.
+- Release structure: all three workflow YAML files parse, the tracked-plus-export secret scan passes across 242 files, and the icon is an opaque 1024×1024 PNG.
 - Public policy status: Privacy, Terms, and Support each return HTTP 404 and remain release-blocking.
 - The quarantined Create React App client is unsupported, has no deploy path, and is not a safe PWA or release surface. The legal pages require a separate safe static host; stale root `build/` output is not release evidence.
 
@@ -44,6 +45,7 @@ Fresh local verification on 2026-08-09:
 - [ ] `UNVERIFIED` — VoiceOver order, labels, values, hints, and destructive confirmations.
 - [ ] `UNVERIFIED` — Dynamic Type at the largest accessibility sizes, Reduce Motion, dark appearance, keyboard avoidance, and compact safe areas.
 - [ ] `UNVERIFIED` — iCloud, encrypted computer, and unencrypted computer backup/restore behavior, including restoration after active deletion.
+- [ ] `UNVERIFIED` — all raw measurements and integrity rows in `finova-25k-device-evidence.md` on the exact signed release candidate.
 
 ## Credentialed Apple gates
 
@@ -62,4 +64,4 @@ Fresh local verification on 2026-08-09:
 
 No App Store acceptance or publication is claimed by this checklist.
 
-Current environment boundary on 2026-08-09: EAS is not logged in; CocoaPods 1.17.0 is installed; only Apple Command Line Tools are selected and full Xcode is unavailable. Signed build, StoreKit sandbox, TestFlight, upload, review, and publication therefore remain external gates.
+Current environment boundary on 2026-08-10: EAS is not logged in; CocoaPods 1.17.0 is installed; only Apple Command Line Tools are selected and full Xcode is unavailable. Signed build, StoreKit sandbox, TestFlight, upload, review, and publication therefore remain external gates.

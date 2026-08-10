@@ -26,6 +26,7 @@ jobs:
         working-directory: mobile
         run: |
           npm test -- --runInBand
+          npm run test:scale
           npm test -- --runInBand __tests__/legacyWebQuarantine.test.ts
           npm run typecheck
           npm run lint
@@ -48,6 +49,16 @@ jobs:
           test "$(sips -g hasAlpha mobile/assets/icon.png | awk '/hasAlpha/{print $2}')" = "no"
       - name: Run redacted source and bundle scan
         run: node scripts/scan-secrets.mjs --tracked --paths mobile/dist
+      - name: Generate content-free Node scale evidence
+        working-directory: mobile
+        run: npm run profile:scale
+      - name: Upload content-free scale evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: finova-scale-${{ github.sha }}
+          path: mobile/finova-scale-profile.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Record content-free readiness result
         run: node -e 'require("node:fs").writeFileSync("finova-readiness.txt", `sha=${process.env.GITHUB_SHA}\nlocal_gates=passed\nbuilt=false\ndeployed=false\nsubmitted=false\n`)'
       - name: Upload content-free readiness evidence

@@ -1,28 +1,42 @@
 import { Alert } from 'react-native';
 import { act, fireEvent, waitFor } from '@testing-library/react-native';
+import type { ReactElement } from 'react';
 import { SettingsScreen, type SettingsOperations } from '../src/screens/SettingsScreen';
+import type { FinanceSnapshot } from '../src/domain/types';
 import { renderWithFinance } from '../test-utils/renderWithFinance';
 
 const operations = (): SettingsOperations => ({
-  exportBackup: jest.fn(async () => {}),
-  exportCsv: jest.fn(async () => {}),
-  pickBackup: jest.fn(async () => null),
   cleanupArtifacts: jest.fn(async () => {}),
+  exportEncryptedBackup: jest.fn(async () => {}),
+  exportStreamingCsv: jest.fn(async () => {}),
+  pickEncryptedBackup: jest.fn(async () => null),
 });
+
+const makePortable = (repository: object) => Object.assign(repository, {
+  withStableBackupSnapshot: jest.fn(),
+  beginBackupImport: jest.fn(),
+});
+
+const renderSettings = (
+  element: ReactElement,
+  snapshot: FinanceSnapshot = { transactions: [], budgets: [] },
+) => renderWithFinance(element, snapshot, makePortable);
 
 describe('SettingsScreen', () => {
   it('exports only after an explicit user action and describes share limits', async () => {
     const ports = operations();
-    const view = await renderWithFinance(<SettingsScreen onPrivacy={jest.fn()} onSupport={jest.fn()} operations={ports} />);
+    const view = await renderSettings(<SettingsScreen onPrivacy={jest.fn()} onSupport={jest.fn()} operations={ports} />);
+    fireEvent.changeText(view.getByLabelText('Backup password'), 'correct horse battery staple');
+    fireEvent.changeText(view.getByLabelText('Confirm backup password'), 'correct horse battery staple');
     await waitFor(() => expect(view.getByLabelText('Export Finova backup').props.accessibilityState)
       .toEqual({ disabled: false }));
     await fireEvent.press(view.getByLabelText('Export Finova backup'));
-    await waitFor(() => expect(ports.exportBackup).toHaveBeenCalled());
+    await waitFor(() => expect(ports.exportEncryptedBackup).toHaveBeenCalled());
     expect(view.getByText(/share sheet opening does not prove another app saved/i)).toBeTruthy();
   });
 
   it('requires the exact phrase DELETE before deleting local rows', async () => {
-    const view = await renderWithFinance(<SettingsScreen onPrivacy={jest.fn()} onSupport={jest.fn()} operations={operations()} />, {
+    const view = await renderSettings(<SettingsScreen onPrivacy={jest.fn()} onSupport={jest.fn()} operations={operations()} />, {
       transactions: [{
         id: 'one', kind: 'expense', amountMinor: 100, categoryId: 'dining', description: 'Coffee',
         occurredOn: '2026-08-06', isRecurring: false,
@@ -41,17 +55,19 @@ describe('SettingsScreen', () => {
   });
 
   it('requires confirmation before a validated backup replaces local data', async () => {
-    const replacement = {
-      transactions: [],
-      budgets: [{ categoryId: 'groceries' as const, limitMinor: 12_300, updatedAt: '2026-08-06T00:00:00.000Z' }],
+    const pending = {
+      manifest: { counts: { manifest: 1, ledger: 1, transaction: 2, budget_plan: 1, recurring_template: 0, expected_occurrence: 0, savings_goal: 0, goal_contribution: 0 } },
+      importInto: jest.fn(async () => ({})),
+      discard: jest.fn(async () => {}),
     };
-    const ports = { ...operations(), pickBackup: jest.fn(async () => replacement) };
+    const ports = { ...operations(), pickEncryptedBackup: jest.fn(async () => pending as never) };
     const alert = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
       buttons?.find((button) => button.text === 'Replace')?.onPress?.();
     });
-    const view = await renderWithFinance(<SettingsScreen onPrivacy={jest.fn()} onSupport={jest.fn()} operations={ports} />);
+    const view = await renderSettings(<SettingsScreen onPrivacy={jest.fn()} onSupport={jest.fn()} operations={ports} />);
+    fireEvent.changeText(view.getByLabelText('Backup password'), 'correct horse battery staple');
     await fireEvent.press(view.getByLabelText('Import Finova backup'));
-    await waitFor(async () => expect(await view.repository.listBudgets()).toHaveLength(1));
+    await waitFor(() => expect(pending.importInto).toHaveBeenCalledWith(expect.any(Object)));
     expect(alert).toHaveBeenCalledWith('Replace all Finova data?', expect.stringContaining('cannot be undone'), expect.any(Array));
     alert.mockRestore();
   });
@@ -59,7 +75,7 @@ describe('SettingsScreen', () => {
   it('keeps CSV export behind Plus while backup portability remains free', async () => {
     const ports = operations();
     const onUpgrade = jest.fn();
-    const view = await renderWithFinance(
+    const view = await renderSettings(
       <SettingsScreen
         onPlans={onUpgrade}
         onPrivacy={jest.fn()}
@@ -77,24 +93,17 @@ describe('SettingsScreen', () => {
     await waitFor(() => expect(view.getByLabelText('Export transaction CSV').props.accessibilityState).toEqual({ disabled: false }));
     await act(async () => { fireEvent.press(view.getByLabelText('Export transaction CSV')); });
     expect(onUpgrade).toHaveBeenCalledTimes(1);
-    expect(ports.exportCsv).not.toHaveBeenCalled();
+    expect(ports.exportStreamingCsv).not.toHaveBeenCalled();
+    fireEvent.changeText(view.getByLabelText('Backup password'), 'correct horse battery staple');
+    fireEvent.changeText(view.getByLabelText('Confirm backup password'), 'correct horse battery staple');
     await act(async () => { fireEvent.press(view.getByLabelText('Export Finova backup')); });
-    await waitFor(() => expect(ports.exportBackup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(ports.exportEncryptedBackup).toHaveBeenCalledTimes(1));
   });
 
   it('requires a matching confirmation before encrypted backup export', async () => {
-    const ports: SettingsOperations = {
-      ...operations(),
-      exportEncryptedBackup: jest.fn(async () => {}),
-      pickEncryptedBackup: jest.fn(async () => null),
-    };
-    const view = await renderWithFinance(
+    const ports = operations();
+    const view = await renderSettings(
       <SettingsScreen onPrivacy={jest.fn()} onSupport={jest.fn()} operations={ports} />,
-      { transactions: [], budgets: [] },
-      (repository) => Object.assign(repository, {
-        withStableBackupSnapshot: jest.fn(),
-        beginBackupImport: jest.fn(),
-      }),
     );
     await waitFor(() => expect(view.getByLabelText('Backup password')).toBeTruthy());
     fireEvent.changeText(view.getByLabelText('Backup password'), 'correct horse battery staple');

@@ -11,8 +11,10 @@ Apple permits 1–10 iPhone screenshots. Use one accepted 6.9-inch portrait canv
 | 3 | A private, searchable ledger | Transactions search/filter with only synthetic entries. |
 | 4 | Budget status in plain language | Budgets showing on-track, near-limit, and over-limit text plus progress. |
 | 5 | Six months without predictions | Insights with real deterministic bars and the no-forecast limitation. |
-| 6 | Upgrade once, keep it unlocked | Real Finova Plus screen with Apple's localized one-time price, Continue Free, and Restore visible. |
-| 7 | Export or delete when you choose | Settings data controls without the system share destination list. |
+| 6 | See bills before you record them | Expected Bills with overdue/due/upcoming text and Review & Record visible; no automatic-payment claim. |
+| 7 | Plan goals without moving money | Savings Goals with synthetic progress and the no-transfer boundary visible. |
+| 8 | Upgrade once, keep it unlocked | Real Finova Plus screen with Apple's localized one-time price, Continue Free, and Restore visible. |
+| 9 | Export or delete when you choose | Settings encrypted-backup and deletion controls without passwords or the system share destination list. |
 
 Review each frame at App Store display size. Recheck Dynamic Type, VoiceOver labels, safe areas, contrast, status text, and the absence of real names, accounts, merchants, filenames, device identifiers, or notification content.
 

@@ -3,35 +3,24 @@ import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Screen } from '../components/Screen';
 import { useFinance } from '../data/FinanceProvider';
-import type { TransactionExport } from '../data/financeRepository';
-import type { FinanceSnapshot, Ledger } from '../domain/types';
 import { colors, radius, spacing } from '../design/tokens';
-import { ArtifactStore, shareOwnedArtifact, shareTextArtifact } from '../services/artifacts';
-import { serializeBackup } from '../services/backup';
-import { transactionsToCsv } from '../services/csv';
+import { ArtifactStore, shareOwnedArtifact } from '../services/artifacts';
 import { exportEncryptedBackup } from '../services/backupExporter';
 import { exportCsv as exportStreamingCsv } from '../services/csvExporter';
 import { deleteAllAppData } from '../services/deleteAllData';
-import {
-  pickEncryptedBackupForImport,
-  pickFinovaBackup,
-  type PendingEncryptedBackup,
-} from '../services/importBackup';
+import { pickEncryptedBackupForImport, type PendingEncryptedBackup } from '../services/importBackup';
 import type { StableBackupRepository } from '../services/backupExporter';
 import type { ImportableBackupRepository } from '../services/backupImporter';
 import { FinovaPreferenceStore } from '../services/preferences';
 
 export interface SettingsOperations {
-  exportBackup(snapshot: FinanceSnapshot, ledger: Ledger): Promise<void>;
-  exportCsv(value: TransactionExport): Promise<void>;
-  pickBackup(): Promise<FinanceSnapshot | null>;
   cleanupArtifacts(): Promise<void>;
-  exportEncryptedBackup?(
+  exportEncryptedBackup(
     repository: StableBackupRepository,
     password: string,
   ): Promise<void>;
-  exportStreamingCsv?(repository: StableBackupRepository): Promise<void>;
-  pickEncryptedBackup?(password: string): Promise<PendingEncryptedBackup | null>;
+  exportStreamingCsv(repository: StableBackupRepository): Promise<void>;
+  pickEncryptedBackup(password: string): Promise<PendingEncryptedBackup | null>;
   clearPreferences?(): Promise<void>;
 }
 
@@ -43,13 +32,6 @@ function getArtifactStore(): ArtifactStore {
 }
 
 const defaultOperations: SettingsOperations = {
-  exportBackup: async (snapshot, ledger) => {
-    await shareTextArtifact(getArtifactStore(), undefined, 'finova-backup', 'json', serializeBackup(snapshot, ledger), 'application/json');
-  },
-  exportCsv: async ({ transactions, ledger }) => {
-    await shareTextArtifact(getArtifactStore(), undefined, 'finova-transactions', 'csv', transactionsToCsv(transactions, ledger), 'text/csv');
-  },
-  pickBackup: pickFinovaBackup,
   cleanupArtifacts: () => getArtifactStore().cleanupAll(),
   exportEncryptedBackup: async (repository, password) => {
     const store = getArtifactStore();
@@ -96,10 +78,6 @@ export function SettingsScreen({
   const [status, setStatus] = useState<string | null>(null);
   const [backupPassword, setBackupPassword] = useState('');
   const [backupPasswordConfirmation, setBackupPasswordConfirmation] = useState('');
-  const securePortability = Boolean(
-    operations.exportEncryptedBackup
-    && operations.pickEncryptedBackup,
-  );
   const passwordReady = Array.from(backupPassword).length >= 12
     && Array.from(backupPassword).length <= 128;
   const backupPasswordsMatch = backupPassword === backupPasswordConfirmation;
@@ -121,47 +99,25 @@ export function SettingsScreen({
     setBusy('import');
     setStatus(null);
     try {
-      if (securePortability) {
-        if (!finance.portability || !operations.pickEncryptedBackup) {
-          throw new Error('Encrypted portability is unavailable in this build.');
-        }
-        const pending = await operations.pickEncryptedBackup(backupPassword);
-        if (!pending) {
-          setStatus('No backup was selected. Your data is unchanged.');
-          return;
-        }
-        const count = Object.values(pending.manifest.counts).reduce((sum, value) => sum + value, 0);
-        Alert.alert(
-          'Replace all Finova data?',
-          `This authenticated backup contains ${count} records. Replacing this installation cannot be undone.`,
-          [
-            { text: 'Cancel', style: 'cancel', onPress: () => void pending.discard() },
-            {
-              text: 'Replace',
-              style: 'destructive',
-              onPress: () => void perform('replace', async () => {
-                await pending.importInto(finance.portability! as ImportableBackupRepository);
-                await finance.refreshAfterDataReplacement();
-              }, 'The authenticated backup replaced this installation’s active data.'),
-            },
-          ],
-        );
-        return;
-      }
-      const snapshot = await operations.pickBackup();
-      if (!snapshot) {
+      if (!finance.portability) throw new Error('Encrypted portability is unavailable in this build.');
+      const pending = await operations.pickEncryptedBackup(backupPassword);
+      if (!pending) {
         setStatus('No backup was selected. Your data is unchanged.');
         return;
       }
+      const count = Object.values(pending.manifest.counts).reduce((sum, value) => sum + value, 0);
       Alert.alert(
         'Replace all Finova data?',
-        'The validated backup will replace every active transaction and budget in this installation. This cannot be undone.',
+        `This authenticated backup contains ${count} records. Replacing this installation cannot be undone.`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: 'Cancel', style: 'cancel', onPress: () => void pending.discard() },
           {
             text: 'Replace',
             style: 'destructive',
-            onPress: () => void perform('replace', () => finance.replaceAll(snapshot), 'The validated backup replaced this installation’s active data.'),
+            onPress: () => void perform('replace', async () => {
+              await pending.importInto(finance.portability! as ImportableBackupRepository);
+              await finance.refreshAfterDataReplacement();
+            }, 'The authenticated backup replaced this installation’s active data.'),
           },
         ],
       );
@@ -196,8 +152,7 @@ export function SettingsScreen({
       {status ? <View accessibilityLiveRegion="polite" style={styles.status}><Text style={styles.statusText}>{status}</Text></View> : null}
 
       <Section title="Move your data" detail="Export creates a temporary file and opens the iOS share sheet.">
-        {securePortability ? (
-          <View style={styles.passwordPanel}>
+        <View style={styles.passwordPanel}>
             <Text style={styles.passwordLabel}>Backup password</Text>
             <TextInput
               accessibilityLabel="Backup password"
@@ -224,28 +179,21 @@ export function SettingsScreen({
             />
             {backupPasswordConfirmation && !backupPasswordsMatch ? <Text accessibilityRole="alert" style={styles.passwordMismatch}>The backup passwords do not match.</Text> : null}
             <Text style={styles.footnote}>Finova cannot recover this password. Confirm it to export; only the first field is used to inspect or import an existing encrypted file.</Text>
-          </View>
-        ) : null}
-        <ActionRow icon="document-text-outline" label={securePortability ? 'Export encrypted backup' : 'Export JSON backup'} detail={securePortability ? 'Authenticated Finova file with transactions, plans, bills, and goals' : 'Transactions and budgets in a versioned Finova file'} accessibilityLabel="Export Finova backup" testID="settings-export-backup" disabled={busy !== null || !finance.ledger || (securePortability && (!passwordReady || !backupPasswordsMatch || !finance.portability))} onPress={() => void perform('backup', async () => {
-          if (securePortability && operations.exportEncryptedBackup && finance.portability) {
-            await operations.exportEncryptedBackup(finance.portability, backupPassword);
-            setBackupPassword('');
-            setBackupPasswordConfirmation('');
-          } else {
-            await operations.exportBackup(await finance.snapshot(), finance.ledger!);
-          }
+        </View>
+        <ActionRow icon="document-text-outline" label="Export encrypted backup" detail="Authenticated Finova file with transactions, plans, bills, and goals" accessibilityLabel="Export Finova backup" testID="settings-export-backup" disabled={busy !== null || !finance.ledger || !passwordReady || !backupPasswordsMatch || !finance.portability} onPress={() => void perform('backup', async () => {
+          if (!finance.portability) throw new Error('Encrypted portability is unavailable in this build.');
+          await operations.exportEncryptedBackup(finance.portability, backupPassword);
+          setBackupPassword('');
+          setBackupPasswordConfirmation('');
         }, 'The backup share sheet closed. Finova cannot confirm delivery or storage by another app.')} />
-        <ActionRow icon="grid-outline" label="Export transaction CSV" detail={isPlus ? 'Spreadsheet-compatible ledger; budgets are not included' : 'Finova Plus feature; JSON backup remains free'} accessibilityLabel="Export transaction CSV" testID="settings-export-csv" disabled={busy !== null} onPress={() => {
+        <ActionRow icon="grid-outline" label="Export transaction CSV" detail={isPlus ? 'Spreadsheet-compatible ledger; budgets are not included' : 'Finova Plus feature; encrypted backup remains free'} accessibilityLabel="Export transaction CSV" testID="settings-export-csv" disabled={busy !== null || !finance.portability} onPress={() => {
           if (!isPlus) { onPlans(); return; }
           void perform('csv', async () => {
-            if (operations.exportStreamingCsv && finance.portability) {
-              await operations.exportStreamingCsv(finance.portability);
-            } else {
-              await operations.exportCsv(await finance.readTransactionsForCsv());
-            }
+            if (!finance.portability) throw new Error('Streaming export is unavailable in this build.');
+            await operations.exportStreamingCsv(finance.portability);
           }, 'The CSV share sheet closed. Finova cannot confirm delivery or storage by another app.');
         }} />
-        <ActionRow icon="download-outline" label={securePortability ? 'Import encrypted backup' : 'Import JSON backup'} detail="Authenticates and validates first, then asks before replacing all active data" accessibilityLabel="Import Finova backup" testID="settings-import-backup" disabled={busy !== null || (securePortability && (!passwordReady || !finance.portability))} onPress={() => void importBackup()} />
+        <ActionRow icon="download-outline" label="Import encrypted backup" detail="Authenticates and validates first, then asks before replacing all active data" accessibilityLabel="Import Finova backup" testID="settings-import-backup" disabled={busy !== null || !passwordReady || !finance.portability} onPress={() => void importBackup()} />
         <Text style={styles.footnote}>The share sheet opening does not prove another app saved, delivered, or protected the file.</Text>
       </Section>
 

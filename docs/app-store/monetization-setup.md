@@ -9,7 +9,7 @@ Status: `CODED / EXTERNAL CONFIGURATION BLOCKED`. The app has a real RevenueCat 
 | RevenueCat entitlement | `finova_plus` |
 | Non-consumable product | `com.avinashamanchi.finova.plus.lifetime` |
 | Suggested launch price | US $9.99 one time; confirm every storefront in App Store Connect |
-| Plus access | Unlimited active budgets, six-month insights, CSV export, recurring-bill planning, and savings goals |
+| Plus access | Unlimited active budgets, optional rollover, six-month insights, CSV export, expected-bill planning with confirm-before-record, and savings goals |
 | Free plan | Unlimited transactions, up to 3 active budgets, monthly summaries, and encrypted backup/import |
 
 Finova uses a one-time unlock because its core ledger and calculations are local. The UI never hard-codes the selling price; it displays Apple's localized StoreKit price returned through RevenueCat.
@@ -24,5 +24,7 @@ Finova uses a one-time unlock because its core ledger and calculations are local
 6. Build a signed iOS development build. Verify localized price loading, successful purchase, cancellation, interrupted network, already-owned state, Restore Purchases after reinstall, and unchanged free-ledger data using Apple sandbox accounts. RevenueCat documents a sandbox-specific anonymous-ID reinstall caveat, so exercise that exact path rather than inferring it from unit tests.
 7. Confirm the non-consumable's Family Sharing choice, tax category, availability, localization, and review screenshot in App Store Connect.
 8. Repeat the complete flow in the exact TestFlight candidate and provide the purchase screenshot and reviewer path in App Review notes.
+
+At 25,000 MAU, Apple and RevenueCat—not an app-owned Finova server—serve purchases and entitlement refreshes. The repository-controlled gate proves fail-closed entitlement states and listener cleanup, but provider dashboard configuration, sandbox availability, rate behavior, and outage recovery remain external evidence.
 
 Do not submit while the paywall says configuration is unavailable, the product does not load, Restore Purchases is unverified, or the Apple and RevenueCat product identifiers differ.
