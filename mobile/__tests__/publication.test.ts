@@ -34,6 +34,13 @@ describe('iOS publication package', () => {
     for (const claim of ['bank-grade', 'financial advice', 'tax advice', 'guaranteed', 'connect your bank']) expect(copy).not.toContain(claim);
     for (const disclosure of ['stored locally', 'not financial, tax, legal, credit, or investment advice', 'may be incomplete']) expect(copy).toContain(disclosure);
     expect(metadata.submissionStatus).toBe('BLOCKED');
+    expect(metadata.primaryLanguage).toBe('English (U.S.)');
+    expect(metadata.sku).toBe('finova-ios');
+    expect(metadata.appPrivacyDraft).toMatchObject({
+      tracking: false,
+      purchaseHistory: expect.stringMatching(/RevenueCat.*not linked/i),
+    });
+    expect(metadata.appPrivacyDraft).not.toHaveProperty('userId');
   });
 
   it('documents current screenshot canvases and leaves external gates unchecked', () => {
@@ -48,18 +55,32 @@ describe('iOS publication package', () => {
   it('uses gated CI and a manual no-submit release workflow', () => {
     const ci = readFileSync(join(ROOT, '.github/workflows/ios-ci.yml'), 'utf8');
     const release = readFileSync(join(ROOT, '.github/workflows/release-readiness.yml'), 'utf8');
-    for (const command of ['npm ci', 'npm test -- --runInBand', 'npm run typecheck', 'npm run lint', 'npm run expo:doctor', 'npm run export:ios', 'npm audit --audit-level=high', 'scan-secrets.mjs']) {
+    for (const command of ['npm ci', 'npm test -- --runInBand', 'npm run typecheck', 'npm run lint', 'npm run expo:doctor', 'npm run export:ios', 'node scripts/check-mobile-audit.mjs', 'scan-secrets.mjs']) {
       expect(`${ci}\n${release}`).toContain(command);
     }
     expect(release).toContain('workflow_dispatch');
     expect(release).toContain('expo prebuild --platform ios --no-install --clean');
     expect(release).toContain('git diff --exit-code -- package.json package-lock.json');
     expect(release).not.toMatch(/eas submit|eas build|appleId|ascApiKey|fastlane deliver/i);
+    const auditGate = readFileSync(join(ROOT, 'scripts/check-mobile-audit.mjs'), 'utf8');
+    expect(auditGate).toContain('1138808');
+    expect(auditGate).toContain('1138809');
+    expect(auditGate).toContain('--audit-level=high');
   });
 
-  it('ships public privacy and support documents with the web build', () => {
-    for (const file of ['privacy.html', 'support.html']) {
+  it('ships a safe static landing page plus public legal documents', () => {
+    for (const file of ['index.html', 'privacy.html', 'support.html', 'terms.html']) {
       expect(readFileSync(join(ROOT, 'public', file), 'utf8')).toContain('Finova');
     }
+    const landing = readFileSync(join(ROOT, 'public/index.html'), 'utf8');
+    expect(landing).toMatch(/Finova for iPhone/i);
+    expect(landing).toMatch(/privacy\.html/);
+    expect(landing).toMatch(/terms\.html/);
+    expect(landing).toMatch(/support\.html/);
+    expect(landing).not.toMatch(/<script|<form|localStorage|password/i);
+    const privacy = readFileSync(join(ROOT, 'public/privacy.html'), 'utf8');
+    expect(privacy).toMatch(/Apple processes.*payment/i);
+    expect(privacy).toMatch(/RevenueCat.*purchase/i);
+    expect(privacy).toMatch(/payment-card details/i);
   });
 });

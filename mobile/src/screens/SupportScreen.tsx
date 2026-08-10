@@ -13,6 +13,7 @@ export default function SupportScreen() {
       <Help title="Restore a backup"><Text style={styles.body}>Settings → Import JSON backup validates the file before asking to replace active data. Import is all-or-nothing; it does not merge ledgers.</Text></Help>
       <Help title="Recover deleted data"><Text style={styles.body}>Finova cannot recover deleted data. An older device backup might restore earlier entries, but Finova cannot inspect or manage that backup for you.</Text></Help>
       <Help title="Export troubleshooting"><Text style={styles.body}>A share sheet closing does not prove another app saved the file. Check the destination you selected. Finova deletes its temporary export after the sheet closes.</Text></Help>
+      <Help title="Restore Finova Plus"><Text style={styles.body}>Open Settings, choose View Finova plans, then Restore Purchases while signed into the Apple account that bought the one-time unlock. Restoring Plus does not restore deleted ledger entries; use your own JSON or device backup for finance data.</Text></Help>
       <View style={styles.notice}><Text style={styles.noticeTitle}>Interactive support</Text><Text style={styles.body}>Interactive support is not yet available in the app. The public project repository and release notes are the current support reference.</Text></View>
     </Screen>
   );

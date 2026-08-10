@@ -31,7 +31,8 @@ jobs:
           npm run lint
           npm run expo:doctor
           npm run export:ios
-          npm audit --audit-level=high
+      - name: Audit mobile dependencies
+        run: node scripts/check-mobile-audit.mjs
       - name: Generate native iOS project without credentials
         working-directory: mobile
         run: npx expo prebuild --platform ios --no-install --clean

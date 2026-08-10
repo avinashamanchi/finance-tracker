@@ -1,4 +1,4 @@
-import { fireEvent, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, waitFor } from '@testing-library/react-native';
 import { BudgetsScreen } from '../src/screens/BudgetsScreen';
 import { renderWithFinance } from '../test-utils/renderWithFinance';
 
@@ -26,5 +26,24 @@ describe('budget flows', () => {
       budgets: [{ categoryId: 'dining', limitMinor: 10_000, updatedAt: '2026-08-01T00:00:00.000Z' }],
     });
     await waitFor(() => expect(view.getByText('Near limit — 85% used')).toBeTruthy());
+  });
+
+  it('keeps a fourth active budget behind Finova Plus without changing the ledger', async () => {
+    const onUpgrade = jest.fn();
+    const view = await renderWithFinance(
+      <BudgetsScreen onUpgrade={onUpgrade} />,
+      { transactions: [], budgets: [
+        { categoryId: 'housing', limitMinor: 100_000, updatedAt: '2026-08-01T00:00:00.000Z' },
+        { categoryId: 'utilities', limitMinor: 20_000, updatedAt: '2026-08-01T00:00:00.000Z' },
+        { categoryId: 'groceries', limitMinor: 40_000, updatedAt: '2026-08-01T00:00:00.000Z' },
+      ] },
+    );
+
+    await waitFor(() => expect(view.getByText('$1,600.00')).toBeTruthy());
+    await act(async () => { fireEvent.changeText(view.getByLabelText('Dining budget amount'), '250'); });
+    await act(async () => { fireEvent.press(view.getByLabelText('Save Dining budget')); });
+
+    expect(onUpgrade).toHaveBeenCalledTimes(1);
+    expect(await view.repository.listBudgets()).toHaveLength(3);
   });
 });

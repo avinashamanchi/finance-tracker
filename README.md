@@ -50,8 +50,9 @@ as fixing the live site. Never migrate `finova_users` or `finova_session`. If
 historical finance entries matter, recovery must be a separate user-directed
 workflow before an authorized shutdown.
 
-Before release, replace the Pages root with a safe static landing/legal host or
-disable it and verify the result anonymously. Do not publish only the retained
-legal pages onto the unsafe existing branch, because their return links lead to
-its root. The repository-root `public/privacy.html`, `public/terms.html`, and
-`public/support.html` remain static legal artifacts.
+The repository-root `public/` directory now contains a safe static landing,
+Privacy, Terms, and Support package with no login, scripts, finance input, or
+local storage. It has no deploy workflow and is not proof that the live Pages
+branch changed. Before release, publish the complete static package through an
+authorized safe host or disable the old Pages site, then verify every URL
+anonymously. Do not publish only selected legal files onto the unsafe branch.

@@ -43,7 +43,6 @@ jobs:
         working-directory: mobile
         run: npm run export:ios
       - name: Audit mobile dependencies
-        working-directory: mobile
-        run: npm audit --audit-level=high
+        run: node scripts/check-mobile-audit.mjs
       - name: Run redacted source and bundle scan
         run: node scripts/scan-secrets.mjs --tracked --paths mobile/dist

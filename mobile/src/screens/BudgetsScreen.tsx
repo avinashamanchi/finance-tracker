@@ -8,7 +8,11 @@ import { formatMinor } from '../domain/money';
 import { currentMonth } from '../domain/summaries';
 import { colors, radius, spacing } from '../design/tokens';
 
-export function BudgetsScreen({ initialMonth }: { initialMonth?: string }) {
+export function BudgetsScreen({
+  initialMonth,
+  isPlus = false,
+  onUpgrade = () => {},
+}: { initialMonth?: string; isPlus?: boolean; onUpgrade?: () => void }) {
   const finance = useFinance();
   const month = initialMonth ?? currentMonth();
   const view = finance.monthViews[month];
@@ -45,7 +49,15 @@ export function BudgetsScreen({ initialMonth }: { initialMonth?: string }) {
               label={category.label}
               ledger={ledger}
               limitMinor={budget?.limitMinor ?? 0}
-              onSave={(limitMinor) => finance.setBudget(category.id, limitMinor, month)}
+              onSave={async (limitMinor) => {
+                const isNewActiveBudget = (budget?.limitMinor ?? 0) === 0 && limitMinor > 0;
+                const activeBudgetCount = budgetUsage.budgets.filter(item => item.limitMinor > 0).length;
+                if (!isPlus && isNewActiveBudget && activeBudgetCount >= 3) {
+                  onUpgrade();
+                  return;
+                }
+                await finance.setBudget(category.id, limitMinor, month);
+              }}
               spentMinor={budgetUsage.expenseByCategory[category.id] ?? 0}
             />
           );

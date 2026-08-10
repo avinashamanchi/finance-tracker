@@ -1,5 +1,5 @@
 import { Alert } from 'react-native';
-import { fireEvent, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, waitFor } from '@testing-library/react-native';
 import { SettingsScreen, type SettingsOperations } from '../src/screens/SettingsScreen';
 import { renderWithFinance } from '../test-utils/renderWithFinance';
 
@@ -54,5 +54,31 @@ describe('SettingsScreen', () => {
     await waitFor(async () => expect(await view.repository.listBudgets()).toHaveLength(1));
     expect(alert).toHaveBeenCalledWith('Replace all Finova data?', expect.stringContaining('cannot be undone'), expect.any(Array));
     alert.mockRestore();
+  });
+
+  it('keeps CSV export behind Plus while backup portability remains free', async () => {
+    const ports = operations();
+    const onUpgrade = jest.fn();
+    const view = await renderWithFinance(
+      <SettingsScreen
+        onPlans={onUpgrade}
+        onPrivacy={jest.fn()}
+        onSupport={jest.fn()}
+        onTerms={jest.fn()}
+        operations={ports}
+      />,
+      { transactions: [{
+        id: 'one', kind: 'expense', amountMinor: 100, categoryId: 'dining', description: 'Coffee',
+        occurredOn: '2026-08-06', isRecurring: false,
+        createdAt: '2026-08-06T00:00:00.000Z', updatedAt: '2026-08-06T00:00:00.000Z',
+      }], budgets: [] },
+    );
+
+    await waitFor(() => expect(view.getByLabelText('Export transaction CSV').props.accessibilityState).toEqual({ disabled: false }));
+    await act(async () => { fireEvent.press(view.getByLabelText('Export transaction CSV')); });
+    expect(onUpgrade).toHaveBeenCalledTimes(1);
+    expect(ports.exportCsv).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.press(view.getByLabelText('Export Finova backup')); });
+    await waitFor(() => expect(ports.exportBackup).toHaveBeenCalledTimes(1));
   });
 });

@@ -16,7 +16,9 @@ export interface ArtifactFileSystem {
 }
 
 class ExpoArtifactFileSystem implements ArtifactFileSystem {
-  readonly namespaceUri = new Directory(Paths.cache, 'finova-artifacts').uri.replace(/\/$/, '');
+  get namespaceUri(): string {
+    return new Directory(Paths.cache, 'finova-artifacts').uri.replace(/\/$/, '');
+  }
 
   async createNamespace(): Promise<void> {
     new Directory(this.namespaceUri).create({ idempotent: true, intermediates: true });

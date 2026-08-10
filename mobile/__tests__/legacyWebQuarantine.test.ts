@@ -7,9 +7,14 @@ const guard = path.join(root, 'legacy-web/scripts/require-explicit-unsafe-opt-in
 const expectedError = 'Blocked: this unsupported legacy demo stores plaintext passwords in browser storage.\n';
 
 it('keeps the unsafe browser login outside supported build and deploy paths', () => {
-  for (const unsupportedRootEntrypoint of ['src', 'public/index.html', 'package.json', 'package-lock.json']) {
+  for (const unsupportedRootEntrypoint of ['src', 'package.json', 'package-lock.json']) {
     expect(fs.existsSync(path.join(root, unsupportedRootEntrypoint))).toBe(false);
   }
+  const staticLanding = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
+  expect(staticLanding).toMatch(/privacy\.html/);
+  expect(staticLanding).toMatch(/terms\.html/);
+  expect(staticLanding).toMatch(/support\.html/);
+  expect(staticLanding).not.toMatch(/<script|<form|localStorage|password/i);
 
   const legacyPackage = JSON.parse(fs.readFileSync(path.join(root, 'legacy-web/package.json'), 'utf8'));
   const legacyLock = JSON.parse(fs.readFileSync(path.join(root, 'legacy-web/package-lock.json'), 'utf8'));

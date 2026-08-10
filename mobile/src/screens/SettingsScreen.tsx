@@ -37,8 +37,20 @@ const defaultOperations: SettingsOperations = {
   cleanupArtifacts: () => getArtifactStore().cleanupAll(),
 };
 
-export function SettingsScreen({ onPrivacy, onSupport, operations = defaultOperations }: {
-  onPrivacy: () => void; onSupport: () => void; operations?: SettingsOperations;
+export function SettingsScreen({
+  onPrivacy,
+  onSupport,
+  onTerms = () => {},
+  onPlans = () => {},
+  isPlus = false,
+  operations = defaultOperations,
+}: {
+  onPrivacy: () => void;
+  onSupport: () => void;
+  onTerms?: () => void;
+  onPlans?: () => void;
+  isPlus?: boolean;
+  operations?: SettingsOperations;
 }) {
   const finance = useFinance();
   const [deletePhrase, setDeletePhrase] = useState('');
@@ -111,7 +123,8 @@ export function SettingsScreen({ onPrivacy, onSupport, operations = defaultOpera
 
       <Section title="Move your data" detail="Export creates a temporary file and opens the iOS share sheet.">
         <ActionRow icon="document-text-outline" label="Export JSON backup" detail="Transactions and budgets in a versioned Finova file" accessibilityLabel="Export Finova backup" testID="settings-export-backup" disabled={busy !== null || !finance.ledger} onPress={() => void perform('backup', async () => operations.exportBackup(await finance.snapshot(), finance.ledger!), 'The backup share sheet closed. Finova cannot confirm delivery or storage by another app.')} />
-        <ActionRow icon="grid-outline" label="Export transaction CSV" detail="Spreadsheet-compatible ledger; budgets are not included" accessibilityLabel="Export transaction CSV" testID="settings-export-csv" disabled={busy !== null} onPress={() => {
+        <ActionRow icon="grid-outline" label="Export transaction CSV" detail={isPlus ? 'Spreadsheet-compatible ledger; budgets are not included' : 'Finova Plus feature; JSON backup remains free'} accessibilityLabel="Export transaction CSV" testID="settings-export-csv" disabled={busy !== null} onPress={() => {
+          if (!isPlus) { onPlans(); return; }
           void perform('csv', async () => operations.exportCsv(await finance.readTransactionsForCsv()), 'The CSV share sheet closed. Finova cannot confirm delivery or storage by another app.');
         }} />
         <ActionRow icon="download-outline" label="Import JSON backup" detail="Validates first, then asks before replacing all active data" accessibilityLabel="Import Finova backup" testID="settings-import-backup" disabled={busy !== null} onPress={() => void importBackup()} />
@@ -119,7 +132,9 @@ export function SettingsScreen({ onPrivacy, onSupport, operations = defaultOpera
       </Section>
 
       <Section title="About Finova" detail="Plain-language product boundaries.">
+        <ActionRow icon="sparkles-outline" label={isPlus ? 'Finova Plus active' : 'Finova Free'} detail={isPlus ? 'Unlimited budgets, six-month insights, and CSV export' : 'View the one-time Plus unlock'} accessibilityLabel="View Finova plans" onPress={onPlans} />
         <ActionRow icon="shield-checkmark-outline" label="Privacy and data" detail="Local storage, exports, backups, and deletion" accessibilityLabel="Open privacy information" onPress={onPrivacy} />
+        <ActionRow icon="document-text-outline" label="Terms of Use" detail="Product limits and one-time purchase terms" accessibilityLabel="Open Terms of Use" onPress={onTerms} />
         <ActionRow icon="help-circle-outline" label="Support and limits" detail="How calculations work and what Finova cannot do" accessibilityLabel="Open support information" onPress={onSupport} />
       </Section>
 
