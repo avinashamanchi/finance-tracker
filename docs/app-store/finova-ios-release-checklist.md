@@ -34,7 +34,7 @@ Fresh local verification on 2026-08-10:
 - Mobile: 44 suites / 249 tests, plus 3 focused scale suites / 4 tests; TypeScript, lint, Expo Doctor 18/18, and a cache-cleared 1,349-module iOS export with a 5.54 MB Hermes bundle.
 - Dependency gate: raw npm audit reports 11 high-severity transitive package entries, all rooted only in `image-size` advisories GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq through Expo/Metro. npm proposes a breaking Expo/React Native downgrade and no safe published in-range resolution exists. The checked-in gate accepts only those two advisory sources and fails closed on any new high or critical advisory.
 - Release structure: all three workflow YAML files parse, the tracked-plus-export secret scan passes across 242 files, and the icon is an opaque 1024×1024 PNG.
-- Public policy status: Privacy, Terms, and Support each return HTTP 404 and remain release-blocking.
+- Public policy status: Privacy, Terms, and Support each returned HTTP 404 during the anonymous 2026-08-10 check and remain release-blocking.
 - The quarantined Create React App client is unsupported, has no deploy path, and is not a safe PWA or release surface. The legal pages require a separate safe static host; stale root `build/` output is not release evidence.
 
 ## Expo Go and physical-device gates
@@ -56,7 +56,7 @@ Fresh local verification on 2026-08-10:
 - [ ] `BLOCKED` — App Store Connect record has primary language, SKU, availability, seller/copyright, export compliance, content rights, age rating, category, Digital Services Act trader status, and App Privacy answers.
 - [ ] `BLOCKED` — the exact archive privacy report and bundled third-party privacy manifests agree with Purchase History for Analytics/App Functionality, not linked, and not tracking.
 - [ ] `BLOCKED` — Finova Plus non-consumable, RevenueCat entitlement/offering, localized price, Family Sharing choice, sandbox purchase/cancel/restore/reinstall behavior, and App Review purchase screenshot.
-- [ ] `BLOCKED` — Privacy, Terms, and Support returned HTTP 404 during the anonymous 2026-08-09 release check; publish the safe static legal host and recheck all three over HTTPS.
+- [ ] `BLOCKED` — Privacy, Terms, and Support returned HTTP 404 during the anonymous 2026-08-10 release check; publish the safe static legal host and recheck all three over HTTPS.
 - [ ] `BLOCKED` — 1–10 accepted iPhone screenshots captured from the exact TestFlight binary using `screenshot-matrix.md`.
 - [ ] `BLOCKED` — TestFlight processing, installation, full device regression, and reviewer notes verified.
 - [ ] `BLOCKED` — explicit submission authorization, upload, App Review, and authoritative review result.
