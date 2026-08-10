@@ -9,7 +9,8 @@ describe('policy and support content', () => {
     expect(view.getByText(/unless you explicitly export or share/i)).toBeTruthy();
     expect(view.getByText(/existing device backup may restore data/i)).toBeTruthy();
     expect(view.getByText(/no account, bank connection, ads, tracking, or behavioral product-usage analytics/i)).toBeTruthy();
-    expect(view.getByText(/RevenueCat receives a random anonymous app user identifier/i)).toBeTruthy();
+    expect(view.getByText(/does not send your ledger, amounts, descriptions, categories, backups, or support report to RevenueCat/i)).toBeTruthy();
+    expect(view.getByText(/Delete All does not cancel or refund the non-consumable/i)).toBeTruthy();
   });
 
   it('states calculation and advice limits in support', async () => {

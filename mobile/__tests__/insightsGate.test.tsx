@@ -8,7 +8,9 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
 it('routes a free user from six-month insights to the transparent Plus screen', async () => {
   const service: BillingService = {
-    load: jest.fn(async () => ({ availability: 'preview' as const, entitlementActive: false, products: [] })),
+    load: jest.fn(async () => ({ availability: 'preview' as const, status: 'unknown' as const, products: [], refreshedAt: null, source: 'launch' as const })),
+    subscribe: jest.fn(async () => () => undefined),
+    invalidateCustomerInfoCache: jest.fn(async () => undefined),
     purchase: jest.fn(),
     restore: jest.fn(),
   };

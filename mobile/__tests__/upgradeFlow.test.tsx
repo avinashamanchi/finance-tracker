@@ -12,7 +12,9 @@ jest.mock('expo-linking', () => ({ openURL: jest.fn(async () => undefined) }));
 
 const ready: BillingSnapshot = {
   availability: 'ready',
-  entitlementActive: false,
+  status: 'inactive',
+  refreshedAt: '2026-08-10T01:02:03.000Z',
+  source: 'launch',
   products: [{
     id: 'com.avinashamanchi.finova.plus.lifetime',
     title: 'Finova Plus Lifetime',
@@ -25,8 +27,10 @@ const ready: BillingSnapshot = {
 function service(snapshot: BillingSnapshot = ready): BillingService {
   return {
     load: jest.fn(async () => snapshot),
-    purchase: jest.fn(async () => ({ ...snapshot, entitlementActive: true })),
+    purchase: jest.fn(async () => ({ ...snapshot, status: 'active' as const, source: 'purchase' as const })),
     restore: jest.fn(async () => snapshot),
+    subscribe: jest.fn(async () => () => undefined),
+    invalidateCustomerInfoCache: jest.fn(async () => undefined),
   };
 }
 
@@ -52,7 +56,7 @@ it('offers a one-time Plus purchase with a free escape, restore, and legal links
 });
 
 it('makes Expo Go a non-purchasing preview', async () => {
-  const preview: BillingSnapshot = { availability: 'preview', entitlementActive: false, products: [] };
+  const preview: BillingSnapshot = { availability: 'preview', status: 'unknown', products: [], refreshedAt: null, source: 'launch' };
   const view = render(<BillingProvider service={service(preview)}><UpgradeScreen /></BillingProvider>);
   await waitFor(() => expect(view.getByText(/Expo Go can preview this screen/i)).toBeTruthy());
   expect(view.queryByText(/\$9\.99/)).toBeNull();
@@ -60,7 +64,7 @@ it('makes Expo Go a non-purchasing preview', async () => {
 });
 
 it('keeps Restore Purchases available when the offering request fails', async () => {
-  const failed: BillingSnapshot = { availability: 'error', entitlementActive: false, products: [] };
+  const failed: BillingSnapshot = { availability: 'error', status: 'unknown', products: [], refreshedAt: null, source: 'launch' };
   const billing = service(failed);
   const view = render(<BillingProvider service={billing}><UpgradeScreen /></BillingProvider>);
   await waitFor(() => expect(view.getByText(/could not load purchase options/i)).toBeTruthy());

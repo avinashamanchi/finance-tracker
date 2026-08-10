@@ -7,6 +7,10 @@ export class PlusRequiredError extends Error {
   }
 }
 
+export function hasActivePlus(status: EntitlementStatus): boolean {
+  return status === 'active';
+}
+
 export function requireActivePlus(status: EntitlementStatus): void {
-  if (status !== 'active') throw new PlusRequiredError();
+  if (!hasActivePlus(status)) throw new PlusRequiredError();
 }

@@ -9,8 +9,8 @@ Status: `CODED / EXTERNAL CONFIGURATION BLOCKED`. The app has a real RevenueCat 
 | RevenueCat entitlement | `finova_plus` |
 | Non-consumable product | `com.avinashamanchi.finova.plus.lifetime` |
 | Suggested launch price | US $9.99 one time; confirm every storefront in App Store Connect |
-| Plus access | Unlimited active budgets, six-month insights, and CSV export |
-| Free plan | Unlimited transactions, up to 3 active budgets, monthly summaries, and JSON backup/import |
+| Plus access | Unlimited active budgets, six-month insights, CSV export, recurring-bill planning, and savings goals |
+| Free plan | Unlimited transactions, up to 3 active budgets, monthly summaries, and encrypted backup/import |
 
 Finova uses a one-time unlock because its core ledger and calculations are local. The UI never hard-codes the selling price; it displays Apple's localized StoreKit price returned through RevenueCat.
 
@@ -20,7 +20,7 @@ Finova uses a one-time unlock because its core ledger and calculations are local
 2. Create a non-consumable in-app purchase with the exact product identifier above, then add localization, price, review screenshot, and review notes.
 3. In RevenueCat, connect the Apple app, import the product, attach it to the `finova_plus` entitlement, and add a lifetime package to the current offering.
 4. Set `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` to the RevenueCat **public Apple SDK key** in the EAS development/preview/production environments. Do not place an App Store Connect private key or RevenueCat secret API key in the app.
-5. In App Store Connect App Privacy, disclose Purchase History for Analytics and App Functionality. Because Finova supplies no custom user ID and uses RevenueCat's anonymous ID, follow RevenueCat's current guidance to mark it not linked and not used for tracking; do not select User ID or Device ID unless the shipping configuration changes.
+5. In App Store Connect App Privacy, reconcile Purchase History, anonymous app-user identifier, technical request metadata, linkage, and purpose answers against the exact signed archive privacy report and RevenueCat's current guidance. Finova sends no custom RevenueCat attributes or ledger content; do not infer that this automatically resolves every App Privacy field.
 6. Build a signed iOS development build. Verify localized price loading, successful purchase, cancellation, interrupted network, already-owned state, Restore Purchases after reinstall, and unchanged free-ledger data using Apple sandbox accounts. RevenueCat documents a sandbox-specific anonymous-ID reinstall caveat, so exercise that exact path rather than inferring it from unit tests.
 7. Confirm the non-consumable's Family Sharing choice, tax category, availability, localization, and review screenshot in App Store Connect.
 8. Repeat the complete flow in the exact TestFlight candidate and provide the purchase screenshot and reviewer path in App Review notes.
