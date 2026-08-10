@@ -14,6 +14,7 @@ const draft = {
 
 it.each(['inactive', 'unknown'] as const)('blocks new Plus recurring mutations while %s', async (status) => {
   const repository = {
+    getTemplate: jest.fn(),
     upsertTemplate: jest.fn(),
     archiveTemplate: jest.fn(),
     materializeExpectedOccurrences: jest.fn(),
@@ -28,6 +29,7 @@ it.each(['inactive', 'unknown'] as const)('blocks new Plus recurring mutations w
 it('allows recording an already expected bill after downgrade', async () => {
   const transaction = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' };
   const repository = {
+    getTemplate: jest.fn(),
     upsertTemplate: jest.fn(),
     archiveTemplate: jest.fn(),
     materializeExpectedOccurrences: jest.fn(),

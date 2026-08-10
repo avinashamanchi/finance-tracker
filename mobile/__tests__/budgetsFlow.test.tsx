@@ -1,5 +1,6 @@
 import { act, fireEvent, waitFor } from '@testing-library/react-native';
 import { BudgetsScreen } from '../src/screens/BudgetsScreen';
+import type { PlanningRepository } from '../src/data/planningRepository';
 import { renderWithFinance } from '../test-utils/renderWithFinance';
 
 describe('budget flows', () => {
@@ -45,5 +46,30 @@ describe('budget flows', () => {
 
     expect(onUpgrade).toHaveBeenCalledTimes(1);
     expect(await view.repository.listBudgets()).toHaveLength(3);
+  });
+
+  it('persists an existing budget rollover choice immediately for Plus', async () => {
+    const planning: PlanningRepository = {
+      setBudgetPlan: jest.fn(async (draft) => ({ ...draft, updatedAt: '2026-08-06T12:00:00.000Z' })),
+      listBudgetPlans: jest.fn(async () => []),
+      getBudgetUsage: jest.fn(),
+      createGoal: jest.fn(),
+      addGoalContribution: jest.fn(),
+      archiveGoal: jest.fn(),
+      listGoals: jest.fn(),
+      getGoalProgress: jest.fn(),
+    };
+    const view = await renderWithFinance(
+      <BudgetsScreen initialMonth="2026-08" isPlus planningRepository={planning} />,
+      { transactions: [], budgets: [{ categoryId: 'housing', limitMinor: 100_000, updatedAt: '2026-08-01T00:00:00.000Z' }] },
+    );
+    await waitFor(() => expect(view.getByLabelText('Housing rollover off')).toBeTruthy());
+    await act(async () => { fireEvent.press(view.getByLabelText('Housing rollover off')); });
+    await waitFor(() => expect(planning.setBudgetPlan).toHaveBeenCalledWith(expect.objectContaining({
+      categoryId: 'housing',
+      limitMinor: 100_000,
+      month: '2026-08',
+      rolloverPolicy: 'carry_unused',
+    })));
   });
 });

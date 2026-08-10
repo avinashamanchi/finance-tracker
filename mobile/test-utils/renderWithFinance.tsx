@@ -7,12 +7,14 @@ import type { FinanceSnapshot } from '../src/domain/types';
 export async function renderWithFinance(
   element: ReactElement,
   snapshot: FinanceSnapshot = { transactions: [], budgets: [] },
+  configure?: (repository: InMemoryFinanceRepository) => void,
 ) {
   const repository = new InMemoryFinanceRepository({
     now: () => '2026-08-06T12:00:00.000Z',
     createId: () => '11111111-1111-4111-8111-111111111111',
   });
   await repository.replaceAll(snapshot);
+  configure?.(repository);
   const view = await render(
     <FinanceProvider repository={repository}>{element}</FinanceProvider>,
   );

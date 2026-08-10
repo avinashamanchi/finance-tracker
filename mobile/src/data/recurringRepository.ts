@@ -126,6 +126,7 @@ function validateRange(start: string, end: string): void {
 }
 
 export interface RecurringRepository {
+  getTemplate(templateId: string): Promise<RecurringTemplate | null>;
   upsertTemplate(draft: RecurringTemplateDraft): Promise<RecurringTemplate>;
   archiveTemplate(templateId: string): Promise<void>;
   materializeExpectedOccurrences(today: string): Promise<void>;
@@ -148,6 +149,19 @@ export class SQLiteRecurringRepository implements RecurringRepository {
     if (!isCanonicalUuid(ledgerId)) throw new DataBoundaryError();
     this.clock = options.now ?? (() => new Date());
     this.createId = options.createId ?? (() => Crypto.randomUUID());
+  }
+
+  async getTemplate(templateId: string): Promise<RecurringTemplate | null> {
+    if (!isCanonicalUuid(templateId)) throw new DataBoundaryError();
+    return this.serialized(async () => {
+      const row = await this.database.first<TemplateRow>(
+        `SELECT id, ledger_id, description, category_id, amount_minor, due_day,
+                start_month, end_month, enabled, created_at, updated_at
+         FROM recurring_templates WHERE id = ? AND ledger_id = ?`,
+        [templateId, this.ledgerId],
+      );
+      return row ? mapTemplate(row) : null;
+    });
   }
 
   async upsertTemplate(draft: RecurringTemplateDraft): Promise<RecurringTemplate> {

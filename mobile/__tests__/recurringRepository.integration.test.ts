@@ -44,7 +44,7 @@ describe('recurring repository', () => {
   it('materializes idempotently, reconciles edits, and never posts spending automatically', async () => {
     const test = await fixture();
     try {
-      await test.repository.upsertTemplate({
+      const created = await test.repository.upsertTemplate({
         id: TEMPLATE_ID,
         ledgerId: LEDGER_ID,
         description: 'Rent',
@@ -55,6 +55,8 @@ describe('recurring repository', () => {
         endMonth: null,
         enabled: true,
       });
+      expect(await test.repository.getTemplate(TEMPLATE_ID)).toEqual(created);
+      expect(await test.repository.getTemplate('99999999-9999-4999-8999-999999999999')).toBeNull();
       await test.repository.materializeExpectedOccurrences('2026-08-07');
       await test.repository.materializeExpectedOccurrences('2026-08-07');
       expect(await test.repository.listExpectedBills('2026-08-01', '2026-10-31', '2026-08-07'))

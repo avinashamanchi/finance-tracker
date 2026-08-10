@@ -16,8 +16,8 @@ function monthTitle(month: string): string {
   return new Date(Date.UTC(year, number - 1, 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
-export function HomeScreen({ initialMonth, onAdd, onInsights }: {
-  initialMonth?: string; onAdd: () => void; onInsights: () => void;
+export function HomeScreen({ initialMonth, onAdd, onInsights, onExpectedBills = () => {}, onSavingsGoals = () => {} }: {
+  initialMonth?: string; onAdd: () => void; onInsights: () => void; onExpectedBills?: () => void; onSavingsGoals?: () => void;
 }) {
   const finance = useFinance();
   const [month, setMonth] = useState(initialMonth ?? currentMonth());
@@ -109,6 +109,11 @@ export function HomeScreen({ initialMonth, onAdd, onInsights }: {
         <View><Text style={styles.insightsEyebrow}>SIX-MONTH SIGNAL</Text><Text style={styles.insightsTitle}>See the shape of your cash flow</Text><Text style={styles.insightsDetail}>{trend.filter((point) => point.incomeMinor || point.expenseMinor).length} months with recorded activity</Text></View>
         <Ionicons color={colors.jade} name="arrow-forward" size={22} />
       </Pressable>
+
+      <View style={styles.planningGrid}>
+        <Pressable accessibilityLabel="Open expected bills" accessibilityRole="button" onPress={onExpectedBills} style={styles.planningCard}><Ionicons color={colors.jade} name="calendar-outline" size={23} /><Text style={styles.planningTitle}>Expected bills</Text><Text style={styles.planningDetail}>Plan dates. Record only after review.</Text></Pressable>
+        <Pressable accessibilityLabel="Open savings goals" accessibilityRole="button" onPress={onSavingsGoals} style={styles.planningCard}><Ionicons color={colors.jade} name="flag-outline" size={23} /><Text style={styles.planningTitle}>Savings goals</Text><Text style={styles.planningDetail}>Track progress. No money is moved.</Text></Pressable>
+      </View>
     </Screen>
   );
 }
@@ -137,6 +142,7 @@ const styles = StyleSheet.create({
   insightsEyebrow: { color: colors.jade, fontSize: 10, fontWeight: '900', letterSpacing: 1.3 },
   insightsTitle: { color: colors.text, fontSize: 17, fontWeight: '800', marginTop: 5, maxWidth: 260 },
   insightsDetail: { color: colors.textMuted, fontSize: 12, marginTop: 5 },
+  planningGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }, planningCard: { backgroundColor: colors.panel, borderColor: colors.border, borderRadius: radius.lg, borderWidth: 1, flex: 1, gap: spacing.xs, minHeight: 130, minWidth: 145, padding: spacing.md }, planningTitle: { color: colors.text, fontSize: 15, fontWeight: '900' }, planningDetail: { color: colors.textMuted, fontSize: 11, lineHeight: 16 },
   errorCard: { backgroundColor: '#3B2327', borderColor: colors.coral, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, padding: spacing.md },
   errorText: { color: colors.text, fontSize: 14 },
   retry: { color: colors.coral, fontSize: 14, fontWeight: '800' },

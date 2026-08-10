@@ -81,4 +81,34 @@ describe('SettingsScreen', () => {
     await act(async () => { fireEvent.press(view.getByLabelText('Export Finova backup')); });
     await waitFor(() => expect(ports.exportBackup).toHaveBeenCalledTimes(1));
   });
+
+  it('requires a matching confirmation before encrypted backup export', async () => {
+    const ports: SettingsOperations = {
+      ...operations(),
+      exportEncryptedBackup: jest.fn(async () => {}),
+      pickEncryptedBackup: jest.fn(async () => null),
+    };
+    const view = await renderWithFinance(
+      <SettingsScreen onPrivacy={jest.fn()} onSupport={jest.fn()} operations={ports} />,
+      { transactions: [], budgets: [] },
+      (repository) => Object.assign(repository, {
+        withStableBackupSnapshot: jest.fn(),
+        beginBackupImport: jest.fn(),
+      }),
+    );
+    await waitFor(() => expect(view.getByLabelText('Backup password')).toBeTruthy());
+    fireEvent.changeText(view.getByLabelText('Backup password'), 'correct horse battery staple');
+    fireEvent.changeText(view.getByLabelText('Confirm backup password'), 'different password');
+    expect(view.getByText('The backup passwords do not match.')).toBeTruthy();
+    expect(view.getByLabelText('Export Finova backup').props.accessibilityState).toEqual({ disabled: true });
+
+    fireEvent.changeText(view.getByLabelText('Confirm backup password'), 'correct horse battery staple');
+    fireEvent.press(view.getByLabelText('Export Finova backup'));
+    await waitFor(() => expect(ports.exportEncryptedBackup).toHaveBeenCalledWith(
+      expect.any(Object),
+      'correct horse battery staple',
+    ));
+    expect(view.getByLabelText('Backup password').props.value).toBe('');
+    expect(view.getByLabelText('Confirm backup password').props.value).toBe('');
+  });
 });

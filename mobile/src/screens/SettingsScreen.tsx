@@ -76,6 +76,8 @@ export function SettingsScreen({
   onSupport,
   onTerms = () => {},
   onPlans = () => {},
+  onExpectedBills = () => {},
+  onSavingsGoals = () => {},
   isPlus = false,
   operations = defaultOperations,
 }: {
@@ -83,6 +85,8 @@ export function SettingsScreen({
   onSupport: () => void;
   onTerms?: () => void;
   onPlans?: () => void;
+  onExpectedBills?: () => void;
+  onSavingsGoals?: () => void;
   isPlus?: boolean;
   operations?: SettingsOperations;
 }) {
@@ -91,12 +95,14 @@ export function SettingsScreen({
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [backupPassword, setBackupPassword] = useState('');
+  const [backupPasswordConfirmation, setBackupPasswordConfirmation] = useState('');
   const securePortability = Boolean(
     operations.exportEncryptedBackup
     && operations.pickEncryptedBackup,
   );
   const passwordReady = Array.from(backupPassword).length >= 12
     && Array.from(backupPassword).length <= 128;
+  const backupPasswordsMatch = backupPassword === backupPasswordConfirmation;
 
   const perform = async (name: string, operation: () => Promise<void>, success: string) => {
     setBusy(name);
@@ -204,12 +210,27 @@ export function SettingsScreen({
               style={styles.deleteInput}
               value={backupPassword}
             />
-            <Text style={styles.footnote}>Finova cannot recover this password. The same password is required to inspect or import the encrypted file.</Text>
+            <Text style={styles.passwordLabel}>Confirm password for export</Text>
+            <TextInput
+              accessibilityLabel="Confirm backup password"
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={setBackupPasswordConfirmation}
+              placeholder="Repeat password"
+              placeholderTextColor={colors.textMuted}
+              secureTextEntry
+              style={styles.deleteInput}
+              value={backupPasswordConfirmation}
+            />
+            {backupPasswordConfirmation && !backupPasswordsMatch ? <Text accessibilityRole="alert" style={styles.passwordMismatch}>The backup passwords do not match.</Text> : null}
+            <Text style={styles.footnote}>Finova cannot recover this password. Confirm it to export; only the first field is used to inspect or import an existing encrypted file.</Text>
           </View>
         ) : null}
-        <ActionRow icon="document-text-outline" label={securePortability ? 'Export encrypted backup' : 'Export JSON backup'} detail={securePortability ? 'Authenticated Finova file with transactions, plans, bills, and goals' : 'Transactions and budgets in a versioned Finova file'} accessibilityLabel="Export Finova backup" testID="settings-export-backup" disabled={busy !== null || !finance.ledger || (securePortability && (!passwordReady || !finance.portability))} onPress={() => void perform('backup', async () => {
+        <ActionRow icon="document-text-outline" label={securePortability ? 'Export encrypted backup' : 'Export JSON backup'} detail={securePortability ? 'Authenticated Finova file with transactions, plans, bills, and goals' : 'Transactions and budgets in a versioned Finova file'} accessibilityLabel="Export Finova backup" testID="settings-export-backup" disabled={busy !== null || !finance.ledger || (securePortability && (!passwordReady || !backupPasswordsMatch || !finance.portability))} onPress={() => void perform('backup', async () => {
           if (securePortability && operations.exportEncryptedBackup && finance.portability) {
             await operations.exportEncryptedBackup(finance.portability, backupPassword);
+            setBackupPassword('');
+            setBackupPasswordConfirmation('');
           } else {
             await operations.exportBackup(await finance.snapshot(), finance.ledger!);
           }
@@ -229,7 +250,9 @@ export function SettingsScreen({
       </Section>
 
       <Section title="About Finova" detail="Plain-language product boundaries.">
-        <ActionRow icon="sparkles-outline" label={isPlus ? 'Finova Plus active' : 'Finova Free'} detail={isPlus ? 'Unlimited budgets, six-month insights, and CSV export' : 'View the one-time Plus unlock'} accessibilityLabel="View Finova plans" onPress={onPlans} />
+        <ActionRow icon="sparkles-outline" label={isPlus ? 'Finova Plus active' : 'Finova Free'} detail={isPlus ? 'Unlimited budgets, rollover, expected bills, goals, insights, and CSV' : 'View the one-time Plus unlock'} accessibilityLabel="View Finova plans" onPress={onPlans} />
+        <ActionRow icon="calendar-outline" label="Expected bills" detail="Recurring dates with explicit recording confirmation" accessibilityLabel="Open expected bills" onPress={onExpectedBills} />
+        <ActionRow icon="flag-outline" label="Savings goals" detail="Planning progress only; no money is moved" accessibilityLabel="Open savings goals" onPress={onSavingsGoals} />
         <ActionRow icon="shield-checkmark-outline" label="Privacy and data" detail="Local storage, exports, backups, and deletion" accessibilityLabel="Open privacy information" onPress={onPrivacy} />
         <ActionRow icon="document-text-outline" label="Terms of Use" detail="Product limits and one-time purchase terms" accessibilityLabel="Open Terms of Use" onPress={onTerms} />
         <ActionRow icon="help-circle-outline" label="Support and limits" detail="How calculations work and what Finova cannot do" accessibilityLabel="Open support information" onPress={onSupport} />
@@ -237,7 +260,7 @@ export function SettingsScreen({
 
       <View style={styles.danger}>
         <Text style={styles.dangerTitle}>Delete All Data</Text>
-        <Text style={styles.dangerDetail}>Removes active transactions, budgets, and Finova-owned temporary artifacts from this installation. An existing device backup may restore earlier data.</Text>
+        <Text style={styles.dangerDetail}>Removes active transactions, budget plans, recurring templates, expected bills, savings goals, contribution records, preferences, and Finova-owned temporary artifacts from this installation. Apple purchase history is not deleted or refunded. An existing device backup may restore earlier data.</Text>
         <Text style={styles.deleteLabel}>Type DELETE to continue</Text>
         <TextInput accessibilityLabel="Delete confirmation" autoCapitalize="characters" autoCorrect={false} onChangeText={setDeletePhrase} placeholder="DELETE" placeholderTextColor={colors.textMuted} style={styles.deleteInput} testID="settings-delete-confirmation" value={deletePhrase} />
         <Pressable accessibilityLabel="Delete all data" accessibilityRole="button" accessibilityState={{ disabled: deletePhrase !== 'DELETE' || busy !== null }} disabled={deletePhrase !== 'DELETE' || busy !== null} onPress={() => void deleteEverything()} style={[styles.deleteButton, (deletePhrase !== 'DELETE' || busy !== null) && styles.disabled]} testID="settings-delete-all"><Text style={styles.deleteButtonText}>{busy === 'delete' ? 'Deleting…' : 'Delete All Data'}</Text></Pressable>
@@ -260,7 +283,7 @@ const styles = StyleSheet.create({
   header: { gap: 4, paddingTop: spacing.sm }, eyebrow: { color: colors.jade, fontSize: 11, fontWeight: '900', letterSpacing: 1.5 }, title: { color: colors.text, fontSize: 29, fontWeight: '900', letterSpacing: -0.8 }, subtitle: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
   status: { backgroundColor: colors.jadeDark, borderColor: colors.jade, borderRadius: radius.md, borderWidth: 1, padding: spacing.md }, statusText: { color: colors.text, fontSize: 13, lineHeight: 19 },
   section: { backgroundColor: colors.panel, borderColor: colors.border, borderRadius: radius.lg, borderWidth: 1, overflow: 'hidden' }, sectionHeading: { gap: 3, padding: spacing.md }, sectionTitle: { color: colors.text, fontSize: 17, fontWeight: '900' }, sectionDetail: { color: colors.textMuted, fontSize: 12 },
-  passwordPanel: { borderTopColor: colors.border, borderTopWidth: 1, gap: spacing.xs, padding: spacing.md }, passwordLabel: { color: colors.text, fontSize: 13, fontWeight: '800' },
+  passwordPanel: { borderTopColor: colors.border, borderTopWidth: 1, gap: spacing.xs, padding: spacing.md }, passwordLabel: { color: colors.text, fontSize: 13, fontWeight: '800' }, passwordMismatch: { color: colors.coral, fontSize: 12, fontWeight: '700' },
   action: { alignItems: 'center', borderTopColor: colors.border, borderTopWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 76, padding: spacing.md }, actionIcon: { alignItems: 'center', backgroundColor: colors.jadeDark, borderRadius: 12, height: 40, justifyContent: 'center', width: 40 }, actionCopy: { flex: 1, gap: 3 }, actionLabel: { color: colors.text, fontSize: 14, fontWeight: '800' }, actionDetail: { color: colors.textMuted, fontSize: 11, lineHeight: 16 }, disabled: { opacity: 0.42 }, footnote: { color: colors.textMuted, fontSize: 11, lineHeight: 16, padding: spacing.md },
   danger: { backgroundColor: '#2B1C22', borderColor: '#643641', borderRadius: radius.lg, borderWidth: 1, gap: spacing.sm, padding: spacing.md }, dangerTitle: { color: colors.coral, fontSize: 17, fontWeight: '900' }, dangerDetail: { color: colors.textMuted, fontSize: 12, lineHeight: 18 }, deleteLabel: { color: colors.text, fontSize: 13, fontWeight: '800', marginTop: spacing.xs }, deleteInput: { backgroundColor: colors.ink, borderColor: '#643641', borderRadius: radius.sm, borderWidth: 1, color: colors.text, fontSize: 16, minHeight: 50, paddingHorizontal: spacing.md }, deleteButton: { alignItems: 'center', backgroundColor: colors.coral, borderRadius: radius.sm, justifyContent: 'center', minHeight: 50 }, deleteButtonText: { color: colors.ink, fontSize: 14, fontWeight: '900' },
 });

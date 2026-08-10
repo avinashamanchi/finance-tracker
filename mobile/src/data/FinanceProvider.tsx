@@ -25,6 +25,8 @@ import type {
 import type { FinanceRepository, TransactionExport } from './financeRepository';
 import { openFinanceRepository } from './financeRepository';
 import type { TransactionCursor, TransactionQuery } from './queryTypes';
+import type { PlanningRepository } from './planningRepository';
+import type { RecurringRepository } from './recurringRepository';
 import type { StableBackupRepository } from '../services/backupExporter';
 import type { ImportableBackupRepository } from '../services/backupImporter';
 
@@ -81,6 +83,8 @@ export type FinanceController = Readonly<{
   readTransactionsForCsv(): Promise<TransactionExport>;
   portability: (StableBackupRepository & ImportableBackupRepository) | null;
   refreshAfterDataReplacement(): Promise<void>;
+  planningRepository: PlanningRepository | null;
+  recurringRepository: RecurringRepository | null;
 }>;
 
 const FinanceContext = createContext<FinanceController | null>(null);
@@ -93,6 +97,24 @@ function portabilityRepository(
     && typeof candidate.beginBackupImport === 'function'
     ? candidate as FinanceRepository & StableBackupRepository & ImportableBackupRepository
     : null;
+}
+
+function auxiliaryRepositories(repository: FinanceRepository): Readonly<{
+  planningRepository: PlanningRepository | null;
+  recurringRepository: RecurringRepository | null;
+}> {
+  const candidate = repository as FinanceRepository & Partial<{
+    createPlanningRepository(): PlanningRepository;
+    createRecurringRepository(): RecurringRepository;
+  }>;
+  return {
+    planningRepository: typeof candidate.createPlanningRepository === 'function'
+      ? candidate.createPlanningRepository()
+      : null,
+    recurringRepository: typeof candidate.createRecurringRepository === 'function'
+      ? candidate.createRecurringRepository()
+      : null,
+  };
 }
 
 function uniqueTransactions(transactions: readonly Transaction[]): Transaction[] {
@@ -142,6 +164,9 @@ export function FinanceProvider({
   const trendGeneration = useRef<Record<string, number>>({});
   const monthViewsRef = useRef(monthViews);
   const trendViewsRef = useRef(trendViews);
+  const auxiliary = useMemo(() => ledger
+    ? auxiliaryRepositories(repository)
+    : { planningRepository: null, recurringRepository: null }, [ledger, repository]);
 
   const commitTransactions = useCallback((value: readonly Transaction[]) => {
     transactionsRef.current = value;
@@ -488,8 +513,11 @@ export function FinanceProvider({
     readTransactionsForCsv: () => repository.readTransactionsForCsv(),
     portability: portabilityRepository(repository),
     refreshAfterDataReplacement,
+    planningRepository: auxiliary.planningRepository,
+    recurringRepository: auxiliary.recurringRepository,
   }), [
     boundaries,
+    auxiliary,
     createTransaction,
     deleteAllFinanceData,
     deleteTransaction,

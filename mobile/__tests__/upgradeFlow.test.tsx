@@ -42,6 +42,9 @@ it('offers a one-time Plus purchase with a free escape, restore, and legal links
   expect(view.getAllByText(/Unlimited budgets/i).length).toBeGreaterThan(0);
   expect(view.getAllByText(/Six-month insights/i).length).toBeGreaterThan(0);
   expect(view.getAllByText(/CSV export/i).length).toBeGreaterThan(0);
+  expect(view.getAllByText(/Expected bills/i).length).toBeGreaterThan(0);
+  expect(view.getAllByText(/Savings-goal planning/i).length).toBeGreaterThan(0);
+  expect(view.getAllByText(/password-encrypted backup/i).length).toBeGreaterThan(0);
   expect(view.getByText(/one-time unlock, not a subscription/i)).toBeTruthy();
   expect(view.queryByText(/auto-renew|per month|per year/i)).toBeNull();
 

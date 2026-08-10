@@ -9,9 +9,11 @@ export default function SettingsRoute() {
     <SettingsScreen
       isPlus={billing.entitlementActive}
       onPlans={() => router.push('/upgrade')}
+      onExpectedBills={() => router.push('/expected-bills' as never)}
       onPrivacy={() => router.push('/privacy')}
       onSupport={() => router.push('/support')}
       onTerms={() => router.push('/terms')}
+      onSavingsGoals={() => router.push('/savings-goals' as never)}
     />
   );
 }

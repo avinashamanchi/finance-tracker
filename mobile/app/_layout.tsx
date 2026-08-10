@@ -51,6 +51,13 @@ export default function RootLayout() {
               <Stack.Screen name="support" options={{ title: 'Support' }} />
               <Stack.Screen name="terms" options={{ title: 'Terms of Use' }} />
               <Stack.Screen name="upgrade" options={{ title: 'Finova Plus' }} />
+              <Stack.Screen name="expected-bills" options={{ title: 'Expected bills' }} />
+              <Stack.Screen name="expected-bill/[id]" options={{ title: 'Review expected bill' }} />
+              <Stack.Screen name="recurring-template/new" options={{ presentation: 'modal', title: 'New recurring bill' }} />
+              <Stack.Screen name="recurring-template/[id]" options={{ presentation: 'modal', title: 'Edit recurring bill' }} />
+              <Stack.Screen name="savings-goals" options={{ title: 'Savings goals' }} />
+              <Stack.Screen name="savings-goal/new" options={{ presentation: 'modal', title: 'New savings goal' }} />
+              <Stack.Screen name="savings-goal/[id]" options={{ title: 'Savings goal' }} />
             </Stack>
             </SQLiteFinanceProvider>
           </BillingProvider>
