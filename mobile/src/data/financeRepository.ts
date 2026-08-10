@@ -27,6 +27,7 @@ import {
 } from './configureConnection';
 import { runMigrations } from './migrations';
 import type { MigrationContext, MigrationDatabase } from './migrations/types';
+import { SQLitePlanningRepository } from './planningRepository';
 import type {
   CursorDirection,
   TransactionCursor,
@@ -35,6 +36,7 @@ import type {
   TransactionQuery,
 } from './queryTypes';
 import { TransactionQueryService } from './transactionQueries';
+import { SQLiteRecurringRepository } from './recurringRepository';
 import {
   MAX_LEDGER_TRANSACTIONS,
   isUuidV4,
@@ -214,6 +216,18 @@ export class SQLiteFinanceRepository implements FinanceRepository {
 
   async getLedger(): Promise<Ledger> {
     return { ...this.requireLedger() };
+  }
+
+  createRecurringRepository(): SQLiteRecurringRepository {
+    return new SQLiteRecurringRepository(this.migrationDatabase, this.requireLedger().id, {
+      now: this.clock,
+    });
+  }
+
+  createPlanningRepository(): SQLitePlanningRepository {
+    return new SQLitePlanningRepository(this.migrationDatabase, this.requireLedger().id, {
+      now: this.clock,
+    });
   }
 
   async listTransactionsPage(query: TransactionQuery): Promise<TransactionPage> {
