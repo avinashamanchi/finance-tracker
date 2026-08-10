@@ -2,6 +2,10 @@ import dynamicAppConfig from '../app.config';
 import appConfig from '../app.json';
 import easConfig from '../eas.json';
 
+const { stripDevelopmentNetworkKeys } = require('../plugins/withReleaseNetworkPolicy.cjs') as {
+  stripDevelopmentNetworkKeys: (value: Record<string, unknown>) => Record<string, unknown>;
+};
+
 describe('release configuration', () => {
   it('has an explicit iOS identity and no over-the-air update drift', () => {
     expect(appConfig.expo.name).toBe('Finova');
@@ -42,5 +46,20 @@ describe('release configuration', () => {
     });
     expect(easConfig).not.toHaveProperty('submit');
     expect(JSON.stringify(easConfig)).not.toMatch(/appleId|ascApiKey|password/i);
+  });
+
+  it('ships HTTPS-only transport without development-network exceptions', () => {
+    expect(appConfig.expo.plugins).toContain('./plugins/withReleaseNetworkPolicy.cjs');
+    expect(stripDevelopmentNetworkKeys({
+      NSBonjourServices: ['_expo._tcp'],
+      NSLocalNetworkUsageDescription: 'Development server discovery',
+      NSAppTransportSecurity: {
+        NSAllowsArbitraryLoads: true,
+        NSAllowsArbitraryLoadsForMedia: true,
+        NSAllowsArbitraryLoadsInWebContent: true,
+        NSAllowsLocalNetworking: true,
+        NSExceptionDomains: { localhost: { NSExceptionAllowsInsecureHTTPLoads: true } },
+      },
+    })).toEqual({ NSAppTransportSecurity: { NSAllowsArbitraryLoads: false } });
   });
 });

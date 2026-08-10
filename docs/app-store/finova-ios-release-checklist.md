@@ -26,12 +26,15 @@ The automated record below covers the current local candidate. It is local evide
 - [x] Deterministic Node SQLite gates exercise an exact 100,000-row current schema and frozen shipped-v1→v4 migration with 50-row keyset paging, FTS, SQL aggregates, index plans, content digest, reopen/no-op migration, and no-full-reload UI rules. Node evidence does not satisfy the physical-iPhone gate.
 - [x] Opaque 1024×1024 RGB icon with no text or transparency.
 - [x] CI and manual no-deploy release-readiness workflows contain clean install, test, typecheck, lint, Expo Doctor, iOS export, a fail-closed high/critical advisory gate, prebuild stability, YAML, and redacted secret gates.
+- [x] The one-time paywall exposes Restore Purchases, Privacy, Terms, and official Apple purchase/refund help while continuing to state that Plus does not renew.
+- [x] `apple-review-guideline-applicability.md` records all Apple guideline families, app-specific evidence, external gates, and absent capabilities that cannot be added without re-review.
+- [x] A production-only Expo config plugin strips unused Bonjour/local-network declarations, disables arbitrary ATS loads, and removes localhost transport exceptions from the generated release Info.plist.
 
 ## Automated verification record
 
 Fresh local verification on 2026-08-10:
 
-- Mobile: 44 suites / 249 tests, plus 3 focused scale suites / 4 tests; TypeScript, lint, Expo Doctor 18/18, and a cache-cleared 1,349-module iOS export with a 5.54 MB Hermes bundle.
+- Mobile: 44 suites / 250 tests, plus 3 focused scale suites / 4 tests; TypeScript, lint, Expo Doctor 18/18, and a cache-cleared 1,349-module iOS export with a 5.54 MB Hermes bundle.
 - Dependency gate: raw npm audit reports 11 high-severity transitive package entries, all rooted only in `image-size` advisories GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq through Expo/Metro. npm proposes a breaking Expo/React Native downgrade and no safe published in-range resolution exists. The checked-in gate accepts only those two advisory sources and fails closed on any new high or critical advisory.
 - Release structure: all three workflow YAML files parse, the tracked-plus-export secret scan passes across 242 files, and the icon is an opaque 1024×1024 PNG.
 - Public policy status: Privacy, Terms, and Support each returned HTTP 404 during the anonymous 2026-08-10 check and remain release-blocking.
@@ -61,9 +64,11 @@ Fresh local verification on 2026-08-10:
 - [ ] `BLOCKED` — required device capabilities and every generated Info.plist usage description match the exact archive and are exercised on a current iOS 26 device.
 - [ ] `BLOCKED` — Mac with Apple silicon and Apple Vision Pro availability are explicitly disabled for v1 unless the exact signed iPhone build and local-data behavior are separately tested and supported there.
 - [ ] `BLOCKED` — Finova Plus non-consumable, RevenueCat entitlement/offering, localized price, Family Sharing choice, sandbox purchase/cancel/restore/reinstall behavior, and App Review purchase screenshot.
+- [ ] `BLOCKED` — Family Sharing, subscriptions, trials, offer codes, win-back offers, promoted IAP, and external digital payments remain disabled for v1.
 - [ ] `BLOCKED` — Privacy, Terms, and Support returned HTTP 404 during the anonymous 2026-08-10 release check; publish the safe static legal host and recheck all three over HTTPS.
 - [ ] `BLOCKED` — 1–10 accepted iPhone screenshots captured from the exact TestFlight binary using `screenshot-matrix.md`.
 - [ ] `BLOCKED` — TestFlight processing, installation, full device regression, and reviewer notes verified.
+- [ ] `BLOCKED` — reviewer notes state that no credentials are required and give the exact synthetic local-ledger, encrypted-backup, one-time purchase, restore, and Delete All path.
 - [ ] `BLOCKED` — explicit submission authorization, upload, App Review, and authoritative review result.
 - [ ] `BLOCKED` — public App Store listing opened anonymously and confirmed to show the released version.
 

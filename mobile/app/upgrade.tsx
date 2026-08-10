@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useBilling } from '../src/billing/BillingProvider';
 import { Screen } from '../src/components/Screen';
 import { colors, radius, spacing } from '../src/design/tokens';
-import { PRIVACY_URL, TERMS_URL } from '../src/legal/links';
+import { APPLE_PURCHASE_SUPPORT_URL, PRIVACY_URL, TERMS_URL } from '../src/legal/links';
 
 export default function UpgradeScreen() {
   const router = useRouter();
@@ -35,6 +35,7 @@ export default function UpgradeScreen() {
       <View style={styles.links}>
         <Pressable accessibilityLabel="Privacy Policy" accessibilityRole="link" onPress={() => void Linking.openURL(PRIVACY_URL)} style={styles.link}><Text style={styles.linkText}>Privacy Policy</Text></Pressable>
         <Pressable accessibilityLabel="Terms of Use" accessibilityRole="link" onPress={() => void Linking.openURL(TERMS_URL)} style={styles.link}><Text style={styles.linkText}>Terms of Use</Text></Pressable>
+        <Pressable accessibilityLabel="Apple purchase and refund help" accessibilityRole="link" onPress={() => void Linking.openURL(APPLE_PURCHASE_SUPPORT_URL)} style={styles.link}><Text style={styles.linkText}>Apple purchase and refund help</Text></Pressable>
       </View>
     </Screen>
   );

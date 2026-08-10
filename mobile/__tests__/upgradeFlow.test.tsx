@@ -4,7 +4,7 @@ import * as Linking from 'expo-linking';
 import UpgradeScreen from '../app/upgrade';
 import { BillingProvider, type BillingService } from '../src/billing/BillingProvider';
 import type { BillingSnapshot } from '../src/billing/revenueCatService';
-import { PRIVACY_URL, TERMS_URL } from '../src/legal/links';
+import { APPLE_PURCHASE_SUPPORT_URL, PRIVACY_URL, TERMS_URL } from '../src/legal/links';
 
 const mockBack = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: mockBack }) }));
@@ -56,6 +56,8 @@ it('offers a one-time Plus purchase with a free escape, restore, and legal links
   expect(Linking.openURL).toHaveBeenCalledWith(PRIVACY_URL);
   await act(async () => { fireEvent.press(view.getByRole('link', { name: 'Terms of Use' })); });
   expect(Linking.openURL).toHaveBeenCalledWith(TERMS_URL);
+  await act(async () => { fireEvent.press(view.getByRole('link', { name: 'Apple purchase and refund help' })); });
+  expect(Linking.openURL).toHaveBeenCalledWith(APPLE_PURCHASE_SUPPORT_URL);
 });
 
 it('makes Expo Go a non-purchasing preview', async () => {
