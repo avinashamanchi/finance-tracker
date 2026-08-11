@@ -1,108 +1,58 @@
-# 💎 Finova — Personal Finance Tracker
+# Finova — iOS-first personal finance tracker
 
-A premium dark-themed personal finance tracker built with React + Chart.js. Track income and expenses, visualize spending trends, and manage budgets with real-time alerts.
+Finova's supported product surface is the local-first Expo/React Native app in
+`mobile/`. It starts with an empty ledger and uses integer-cent arithmetic for
+transaction CRUD, search and filters, monthly category budgets, six-month
+insights, strict JSON backup import, CSV export, and coordinated local deletion.
 
----
+## Supported development
 
-## ✨ Features
-
-- **Dashboard** — Live summary cards (income, expenses, net savings, savings rate), category breakdown, budget alerts, recent transactions
-- **Transactions** — Add/delete transactions with categories, full search and filter, animated table
-- **Analytics** — 6-month bar charts, category doughnut chart, savings trend line, monthly summary table
-- **Budgets** — Per-category budget limits, inline editing, visual progress bars with over/warning states
-- **Persistent storage** — All data saved to localStorage, seeded with 6 months of realistic demo data
-- **Luxury dark UI** — Playfair Display + DM Sans, gold accents, animated cards, smooth transitions
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- **Node.js** v16 or higher — [Download here](https://nodejs.org)
-- **npm** (comes with Node)
-
-### Install & Run
+Use Node 22 and work only from `mobile/`:
 
 ```bash
-# 1. Navigate to the project folder
-cd finance-tracker
-
-# 2. Install dependencies
-npm install --legacy-peer-deps
-
-# 3. Start the dev server
+cd mobile
+npm ci
 npm start
 ```
 
-The app will open at **http://localhost:3000** automatically.
+Scan the QR code in Expo Go while the phone and Mac are on the same network.
+Expo Go observation is a device checkpoint, not proof of a signed TestFlight or
+App Store build.
 
-### Build for Production
+Run the local release gates from `mobile/`:
 
 ```bash
-npm run build
+npm test -- --runInBand
+npm run typecheck
+npm run lint
+npm run expo:doctor
+npm run export:ios
+npm audit --audit-level=high
+npx expo prebuild --platform ios --no-install --clean
+git diff --exit-code -- package.json package-lock.json
 ```
 
-Outputs a production build to the `/build` folder — ready to deploy to Vercel, Netlify, or any static host.
+App Store drafts and explicit external blockers are in `docs/app-store/`. No
+signing, submission, approval, or publication is claimed by this repository.
 
----
+## Unsafe local archaeology
 
-## 📁 Project Structure
+The old Create React App demo is quarantined in `legacy-web/`. It is
+unsupported, has no deploy path, is not a migration source, stores plaintext
+passwords in browser `localStorage`, and must never receive real credentials or
+real finance data. Its repository scripts require an exact unsafe opt-in; see
+`legacy-web/QUARANTINED.md`. That guard protects repository scripts, not an
+arbitrary manual `react-scripts` invocation.
 
-```
-finance-tracker/
-├── public/
-│   └── index.html            # HTML shell with Google Fonts
-├── src/
-│   ├── App.js                # Root component + page routing
-│   ├── App.css               # Layout + background gradients
-│   ├── index.js              # React entry point
-│   ├── index.css             # Global variables, resets, keyframe animations
-│   ├── hooks/
-│   │   └── useFinance.js     # All state, localStorage, derived values
-│   └── components/
-│       ├── Sidebar.js/.css   # Navigation sidebar
-│       ├── Dashboard.js/.css # Overview page
-│       ├── Transactions.js/.css  # Transaction log + add form
-│       ├── Analytics.js/.css    # Charts (Bar, Line, Doughnut)
-│       └── Budgets.js/.css      # Budget cards with inline editing
-└── package.json
-```
+This local commit does not disable or update the already-published GitHub Pages
+branch, does not clear any browser `localStorage`, and must not be represented
+as fixing the live site. Never migrate `finova_users` or `finova_session`. If
+historical finance entries matter, recovery must be a separate user-directed
+workflow before an authorized shutdown.
 
----
-
-## 🎨 Design System
-
-| Token | Value |
-|---|---|
-| Background base | `#080a0e` |
-| Card background | `#111720` |
-| Gold accent | `#c9a84c` |
-| Teal accent | `#2dd4bf` |
-| Display font | Playfair Display |
-| Body font | DM Sans |
-
----
-
-## 🛠 Tech Stack
-
-- **React 18** — UI framework
-- **Chart.js 4 + react-chartjs-2** — Bar, Line, and Doughnut charts
-- **date-fns** — Date formatting and manipulation
-- **uuid** — Unique transaction IDs
-- **localStorage** — Client-side persistence (no backend needed)
-
----
-
-## 📊 Resume Bullet
-
-> Developed a full-stack personal finance tracker with React and Chart.js, featuring real-time budget alerts, 6-month spending trend analysis, and a responsive dark-themed UI with localStorage persistence.
-
----
-
-## 🚀 Deploy to Vercel (Free)
-
-1. Push this folder to a GitHub repo
-2. Go to [vercel.com](https://vercel.com) → New Project → Import repo
-3. Leave all defaults → Deploy
-
-Done — live site in under 2 minutes.
+The repository-root `public/` directory now contains a safe static landing,
+Privacy, Terms, and Support package with no login, scripts, finance input, or
+local storage. It has no deploy workflow and is not proof that the live Pages
+branch changed. Before release, publish the complete static package through an
+authorized safe host or disable the old Pages site, then verify every URL
+anonymously. Do not publish only selected legal files onto the unsafe branch.
