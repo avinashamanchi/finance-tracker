@@ -84,8 +84,8 @@ describe('iOS publication package', () => {
     expect(privacy).toMatch(/RevenueCat.*purchase/i);
     expect(privacy).toMatch(/payment-card details/i);
     const pages = readFileSync(join(ROOT, '.github/workflows/pages.yml'), 'utf8');
-    expect(pages).toContain('actions/upload-pages-artifact@v3');
-    expect(pages).toContain('actions/deploy-pages@v4');
+    expect(pages).toContain('actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3');
+    expect(pages).toContain('actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4');
     expect(pages).toMatch(/path:\s*public/);
   });
 });

@@ -5,15 +5,10 @@ browser `localStorage`, so it must never receive real credentials or real
 finance data. It has no deploy path, is not a migration source, and is retained
 only for unsafe local archaeology.
 
-Repository `start` and local-build scripts require this exact acknowledgement:
-
-```bash
-FINOVA_ALLOW_UNSAFE_LEGACY_WEB=I_UNDERSTAND_PLAINTEXT_PASSWORD_STORAGE npm start
-```
-
-The guard protects only the repository scripts. Someone can bypass it by
-invoking `react-scripts` manually; that does not make the demo safe or
-supported.
+Its dependency tree and package scripts were removed on 2026-08-11. The source
+is retained only for read-only archaeology and cannot be installed, started, or
+built through this repository. The historical acknowledgement guard remains as
+evidence of the earlier quarantine boundary, not as a runnable entry point.
 
 This local commit does not disable or update the already-published GitHub Pages
 branch, does not clear any browser `localStorage`, and must not be represented

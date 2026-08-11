@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { lstat, readFile, readdir } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open, readdir } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,9 +30,19 @@ function secretFilename(name) {
 
 async function fileEntry(path) {
   const absolute = resolve(root, path);
-  const metadata = await lstat(absolute);
-  if (!metadata.isFile()) return null;
-  return { path: path.replaceAll('\\', '/'), content: (await readFile(absolute)).toString('latin1') };
+  let handle;
+  try {
+    handle = await open(absolute, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  } catch (error) {
+    if (['ELOOP', 'ENOENT'].includes(error?.code)) return null;
+    throw error;
+  }
+  try {
+    if (!(await handle.stat()).isFile()) return null;
+    return { path: path.replaceAll('\\', '/'), content: (await handle.readFile()).toString('latin1') };
+  } finally {
+    await handle.close();
+  }
 }
 
 async function collect(path) {

@@ -18,15 +18,12 @@ it('keeps the unsafe browser login outside supported build and deploy paths', ()
 
   const legacyPackage = JSON.parse(fs.readFileSync(path.join(root, 'legacy-web/package.json'), 'utf8'));
   const legacyLock = JSON.parse(fs.readFileSync(path.join(root, 'legacy-web/package-lock.json'), 'utf8'));
-  expect(legacyPackage.scripts.deploy).toBeUndefined();
-  expect(legacyPackage.scripts.predeploy).toBeUndefined();
-  expect(legacyPackage.scripts.build).toBeUndefined();
+  expect(legacyPackage.scripts).toBeUndefined();
+  expect(legacyPackage.dependencies).toBeUndefined();
+  expect(legacyPackage.devDependencies).toBeUndefined();
   expect(legacyPackage.homepage).toBeUndefined();
-  expect(legacyPackage.devDependencies?.['gh-pages']).toBeUndefined();
-  expect(legacyLock.packages?.['node_modules/gh-pages']).toBeUndefined();
-  expect(legacyPackage.scripts.prestart).toBeUndefined();
-  expect(legacyPackage.scripts.start).toBe('node scripts/require-explicit-unsafe-opt-in.mjs && react-scripts start');
-  expect(legacyPackage.scripts['build:unsupported-local-only']).toBe('node scripts/require-explicit-unsafe-opt-in.mjs && react-scripts build');
+  expect(Object.keys(legacyLock.packages ?? {})).toEqual(['']);
+  expect(legacyLock.packages?.['']?.dependencies).toBeUndefined();
 
   for (const workflow of fs.readdirSync(path.join(root, '.github/workflows')).filter(name => /\.ya?ml$/i.test(name))) {
     const text = fs.readFileSync(path.join(root, '.github/workflows', workflow), 'utf8');
@@ -51,7 +48,7 @@ it.each([
   expect(result.stdout).toBe('');
 });
 
-it('allows only the exact explicit unsafe legacy opt-in', () => {
+it('retains the historical guard but exposes no package script that can invoke it', () => {
   const result = spawnSync(process.execPath, [guard], {
     cwd: root,
     env: {
@@ -64,4 +61,6 @@ it('allows only the exact explicit unsafe legacy opt-in', () => {
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('');
   expect(result.stdout).toBe('');
+  const legacyPackage = JSON.parse(fs.readFileSync(path.join(root, 'legacy-web/package.json'), 'utf8'));
+  expect(legacyPackage.scripts).toBeUndefined();
 });

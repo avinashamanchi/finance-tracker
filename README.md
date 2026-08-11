@@ -38,11 +38,10 @@ signing, submission, approval, or publication is claimed by this repository.
 ## Unsafe local archaeology
 
 The old Create React App demo is quarantined in `legacy-web/`. It is
-unsupported, has no deploy path, is not a migration source, stores plaintext
-passwords in browser `localStorage`, and must never receive real credentials or
-real finance data. Its repository scripts require an exact unsafe opt-in; see
-`legacy-web/QUARANTINED.md`. That guard protects repository scripts, not an
-arbitrary manual `react-scripts` invocation.
+unsupported, has no deploy path, is not a migration source, and stores
+plaintext passwords in browser `localStorage`. Its dependencies and runnable
+package scripts have been removed; the source remains read-only archaeology.
+Never use real credentials or real finance data. See `legacy-web/QUARANTINED.md`.
 
 This local commit does not disable or update the already-published GitHub Pages
 branch, does not clear any browser `localStorage`, and must not be represented
