@@ -28,17 +28,18 @@ The automated record below covers the current local candidate. It is local evide
 - [x] CI and manual no-deploy release-readiness workflows contain clean install, test, typecheck, lint, Expo Doctor, iOS export, a fail-closed high/critical advisory gate, prebuild stability, YAML, and redacted secret gates.
 - [x] The one-time paywall exposes Restore Purchases, Privacy, Terms, and official Apple purchase/refund help while continuing to state that Plus does not renew.
 - [x] `apple-review-guideline-applicability.md` records all Apple guideline families, app-specific evidence, external gates, and absent capabilities that cannot be added without re-review.
-- [x] A production-only Expo config plugin strips unused Bonjour/local-network declarations, disables arbitrary ATS loads, and removes localhost transport exceptions from the generated release Info.plist.
+- [x] A production-only Expo config plugin strips unused Bonjour/local-network declarations, disables arbitrary ATS loads, and removes localhost transport exceptions from the generated release Info.plist; a sanitized production prebuild was inspected and contained none of those development declarations.
 
 ## Automated verification record
 
-Fresh local verification on 2026-08-10:
+Fresh local verification on 2026-08-11:
 
 - Mobile: 44 suites / 250 tests, plus 3 focused scale suites / 4 tests; TypeScript, lint, Expo Doctor 18/18, and a cache-cleared 1,349-module iOS export with a 5.54 MB Hermes bundle.
 - Dependency gate: raw npm audit reports 11 high-severity transitive package entries, all rooted only in `image-size` advisories GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq through Expo/Metro. npm proposes a breaking Expo/React Native downgrade and no safe published in-range resolution exists. The checked-in gate accepts only those two advisory sources and fails closed on any new high or critical advisory.
-- Release structure: all three workflow YAML files parse, the tracked-plus-export secret scan passes across 242 files, and the icon is an opaque 1024×1024 PNG.
-- Public policy status: Privacy, Terms, and Support each returned HTTP 404 during the anonymous 2026-08-10 check and remain release-blocking.
-- The quarantined Create React App client is unsupported, has no deploy path, and is not a safe PWA or release surface. The legal pages require a separate safe static host; stale root `build/` output is not release evidence.
+- Scale profile: the deterministic 100,000-transaction Node SQLite fixture completed in 854.579 ms; p95 first-page, FTS search, and aggregate timings were 0.048 ms, 8.043 ms, and 1.004 ms. This is content-free regression evidence, not a physical-device result or a live concurrent-user claim.
+- Release structure: all three workflow YAML files parse, the tracked-plus-export secret scan passes across 253 files, and the icon is an opaque 1024×1024 PNG.
+- Public policy status: anonymous checks on 2026-08-11 returned HTTPS 200 for Privacy, Terms, and Support, and each response matched its tracked `public/` file byte for byte.
+- The quarantined Create React App client is unsupported and has no deploy path. GitHub Pages now serves only the reviewed static legal/support surface; stale root `build/` output is not release evidence.
 
 ## Expo Go and physical-device gates
 
@@ -65,7 +66,7 @@ Fresh local verification on 2026-08-10:
 - [ ] `BLOCKED` — Mac with Apple silicon and Apple Vision Pro availability are explicitly disabled for v1 unless the exact signed iPhone build and local-data behavior are separately tested and supported there.
 - [ ] `BLOCKED` — Finova Plus non-consumable, RevenueCat entitlement/offering, localized price, Family Sharing choice, sandbox purchase/cancel/restore/reinstall behavior, and App Review purchase screenshot.
 - [ ] `BLOCKED` — Family Sharing, subscriptions, trials, offer codes, win-back offers, promoted IAP, and external digital payments remain disabled for v1.
-- [ ] `BLOCKED` — Privacy, Terms, and Support returned HTTP 404 during the anonymous 2026-08-10 release check; publish the safe static legal host and recheck all three over HTTPS.
+- [x] Privacy, Terms, and Support returned HTTPS 200 anonymously on 2026-08-11 and matched the tracked release files byte for byte; recheck immediately before submission.
 - [ ] `BLOCKED` — 1–10 accepted iPhone screenshots captured from the exact TestFlight binary using `screenshot-matrix.md`.
 - [ ] `BLOCKED` — TestFlight processing, installation, full device regression, and reviewer notes verified.
 - [ ] `BLOCKED` — reviewer notes state that no credentials are required and give the exact synthetic local-ledger, encrypted-backup, one-time purchase, restore, and Delete All path.
@@ -74,4 +75,4 @@ Fresh local verification on 2026-08-10:
 
 No App Store acceptance or publication is claimed by this checklist.
 
-Current environment boundary on 2026-08-10: EAS is not logged in; CocoaPods 1.17.0 is installed; only Apple Command Line Tools are selected and full Xcode is unavailable. Signed build, StoreKit sandbox, TestFlight, upload, review, and publication therefore remain external gates.
+Current environment boundary on 2026-08-11: EAS is not logged in; CocoaPods 1.17.0 is installed; only Apple Command Line Tools are selected and full Xcode is unavailable. Signed build, StoreKit sandbox, TestFlight, upload, review, and publication therefore remain external gates.
