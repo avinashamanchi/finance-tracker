@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 const script = readFileSync(new URL('../public/demo.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const favicon = readFileSync(new URL('../public/favicon.svg', import.meta.url), 'utf8');
 const pagesWorkflow = readFileSync(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8');
 const iosWorkflow = readFileSync(new URL('../.github/workflows/ios-ci.yml', import.meta.url), 'utf8');
 const context = { globalThis: {} };
@@ -85,6 +86,8 @@ test('dispose removes queued work before it can render', () => {
 });
 
 test('the public entry exposes the live ledger and every primary destination', () => {
+  assert.match(html, /rel="icon" href="favicon\.svg"/);
+  assert.match(favicon, /<svg/);
   assert.match(html, /aria-label="Finova ledger demo"/);
   assert.match(html, /id="demo"/);
   assert.match(html, /id="how-it-works"/);
