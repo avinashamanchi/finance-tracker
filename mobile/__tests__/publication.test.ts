@@ -78,7 +78,10 @@ describe('iOS publication package', () => {
     expect(landing).toMatch(/privacy\.html/);
     expect(landing).toMatch(/terms\.html/);
     expect(landing).toMatch(/support\.html/);
-    expect(landing).not.toMatch(/<script|<form|localStorage|password/i);
+    expect(landing.match(/<script\b[^>]*\bsrc="[^"]+"[^>]*>/gi)).toEqual([
+      '<script src="demo.js" defer>',
+    ]);
+    expect(landing).not.toMatch(/<form|localStorage|sessionStorage|indexedDB|password/i);
     const privacy = readFileSync(join(ROOT, 'public/privacy.html'), 'utf8');
     expect(privacy).toMatch(/Apple processes.*payment/i);
     expect(privacy).toMatch(/RevenueCat.*purchase/i);
