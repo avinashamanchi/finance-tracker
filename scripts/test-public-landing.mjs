@@ -1,16 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
 
-const script = readFileSync(new URL('../public/demo.js', import.meta.url), 'utf8');
+await import(new URL('../public/demo.js', import.meta.url));
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const favicon = readFileSync(new URL('../public/favicon.svg', import.meta.url), 'utf8');
 const pagesWorkflow = readFileSync(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8');
 const iosWorkflow = readFileSync(new URL('../.github/workflows/ios-ci.yml', import.meta.url), 'utf8');
-const context = { globalThis: {} };
-vm.runInNewContext(script, context, { filename: 'public/demo.js' });
-const { STAGES, nextStage, createController } = context.globalThis.FinovaDemo;
+const { STAGES, nextStage, createController } = globalThis.FinovaDemo;
 
 function manualClock() {
   let queued = [];
@@ -104,6 +101,7 @@ test('the public entry exposes the live ledger and every primary destination', (
 });
 
 test('the landing remains a local static explanation rather than a finance intake', () => {
+  const script = readFileSync(new URL('../public/demo.js', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /<form|type="(?:text|number|file)"|connect (?:a |your )?bank|download on the app store/i);
   assert.doesNotMatch(script, /\bfetch\b|XMLHttpRequest|localStorage|sessionStorage|indexedDB/i);
   assert.match(html, /App Store release in preparation/);
