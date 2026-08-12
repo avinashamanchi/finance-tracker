@@ -14,7 +14,12 @@ it('keeps the unsafe browser login outside supported build and deploy paths', ()
   expect(staticLanding).toMatch(/privacy\.html/);
   expect(staticLanding).toMatch(/terms\.html/);
   expect(staticLanding).toMatch(/support\.html/);
-  expect(staticLanding).not.toMatch(/<script|<form|localStorage|password/i);
+  expect(staticLanding.match(/<script\b[^>]*\bsrc="[^"]+"[^>]*>/gi)).toEqual([
+    '<script src="demo.js" defer>',
+  ]);
+  expect(staticLanding).not.toMatch(/<form|localStorage|sessionStorage|indexedDB|password/i);
+  const publicDemo = fs.readFileSync(path.join(root, 'public/demo.js'), 'utf8');
+  expect(publicDemo).not.toMatch(/legacy-web|localStorage|sessionStorage|indexedDB|password/i);
 
   const legacyPackage = JSON.parse(fs.readFileSync(path.join(root, 'legacy-web/package.json'), 'utf8'));
   const legacyLock = JSON.parse(fs.readFileSync(path.join(root, 'legacy-web/package-lock.json'), 'utf8'));

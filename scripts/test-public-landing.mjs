@@ -4,6 +4,9 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const script = readFileSync(new URL('../public/demo.js', import.meta.url), 'utf8');
+const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const pagesWorkflow = readFileSync(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8');
+const iosWorkflow = readFileSync(new URL('../.github/workflows/ios-ci.yml', import.meta.url), 'utf8');
 const context = { globalThis: {} };
 vm.runInNewContext(script, context, { filename: 'public/demo.js' });
 const { STAGES, nextStage, createController } = context.globalThis.FinovaDemo;
@@ -79,4 +82,32 @@ test('dispose removes queued work before it can render', () => {
   controller.dispose();
   clock.runNext();
   assert.deepEqual(rendered, ['empty']);
+});
+
+test('the public entry exposes the live ledger and every primary destination', () => {
+  assert.match(html, /aria-label="Finova ledger demo"/);
+  assert.match(html, /id="demo"/);
+  assert.match(html, /id="how-it-works"/);
+  assert.match(html, /id="privacy"/);
+  assert.match(html, /href="privacy\.html"/);
+  assert.match(html, /href="terms\.html"/);
+  assert.match(html, /href="support\.html"/);
+  assert.match(html, /data-demo-stage="budget"/);
+  assert.match(html, />Pause demo</);
+  assert.match(html, />Replay</);
+  for (const label of ['Start', 'Add transaction', 'Categorize', 'Update budget']) {
+    assert.match(html, new RegExp(`>${label}<`));
+  }
+});
+
+test('the landing remains a local static explanation rather than a finance intake', () => {
+  assert.doesNotMatch(html, /<form|type="(?:text|number|file)"|connect (?:a |your )?bank|download on the app store/i);
+  assert.doesNotMatch(script, /\bfetch\b|XMLHttpRequest|localStorage|sessionStorage|indexedDB/i);
+  assert.match(html, /App Store release in preparation/);
+  assert.match(html, /not financial, tax, legal, credit, or investment advice/i);
+});
+
+test('both publication paths execute the landing contract', () => {
+  assert.match(pagesWorkflow, /node scripts\/test-public-landing\.mjs/);
+  assert.match(iosWorkflow, /node scripts\/test-public-landing\.mjs/);
 });
