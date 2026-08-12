@@ -21,6 +21,8 @@ jobs:
           node-version: 22.23.2
           cache: npm
           cache-dependency-path: mobile/package-lock.json
+      - name: Verify static landing behavior
+        run: node scripts/test-public-landing.mjs
       - name: Install exact mobile dependencies
         working-directory: mobile
         run: npm ci

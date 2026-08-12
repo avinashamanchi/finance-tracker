@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { FinanceProvider } from '../src/data/FinanceProvider';
 import { InMemoryFinanceRepository } from '../src/data/inMemoryFinanceRepository';
@@ -18,5 +18,8 @@ export async function renderWithFinance(
   const view = await render(
     <FinanceProvider repository={repository}>{element}</FinanceProvider>,
   );
+  await act(async () => {
+    await Promise.resolve();
+  });
   return { ...view, repository };
 }

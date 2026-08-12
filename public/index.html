@@ -3,32 +3,164 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
-    <meta name="description" content="Finova is a local-first personal finance ledger for iPhone." />
-    <title>Finova for iPhone</title>
-    <style>
-      *{box-sizing:border-box}body{margin:0;background:#07131c;color:#f4f8fa;font:16px/1.6 system-ui,-apple-system,sans-serif}main{max-width:860px;margin:auto;padding:72px 22px 88px}.eyebrow{color:#39d9b0;font-size:12px;font-weight:850;letter-spacing:.14em}.hero{background:linear-gradient(145deg,#122b37,#0b1b26);border:1px solid #285166;border-radius:28px;padding:clamp(26px,6vw,58px)}h1{font-size:clamp(42px,8vw,76px);letter-spacing:-.045em;line-height:1;margin:14px 0 22px;max-width:720px}h2{font-size:20px;margin:0 0 6px;color:#f4f8fa}p{color:#b7c5ce;max-width:680px}.lead{font-size:clamp(18px,3vw,23px);line-height:1.5}.status{display:inline-block;background:#12382f;border:1px solid #39d9b0;border-radius:999px;color:#c8fff0;font-size:13px;font-weight:750;margin-top:10px;padding:8px 13px}.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));margin:24px 0}.card{background:#102330;border:1px solid #274457;border-radius:18px;padding:20px}.links{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}a{border:1px solid #39d9b0;border-radius:12px;color:#63f0ca;font-weight:750;min-height:48px;padding:11px 15px;text-decoration:none}a:focus,a:hover{background:#12382f}footer{color:#8396a1;font-size:13px;margin-top:28px}
-    </style>
+    <meta name="color-scheme" content="light" />
+    <meta name="description" content="Finova is a private, local-first personal finance ledger for iPhone." />
+    <meta name="theme-color" content="#f2f6f2" />
+    <title>Finova — a calmer personal ledger</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="demo.js" defer></script>
   </head>
   <body>
-    <main>
-      <section class="hero">
-        <div class="eyebrow">FINOVA FOR IPHONE</div>
-        <h1>A clearer view of the money you record.</h1>
-        <p class="lead">Finova is a local-first ledger for transactions, monthly budgets, deterministic summaries, and user-directed backups. It does not connect to a bank or provide financial advice.</p>
-        <div class="status">App Store release in preparation</div>
-      </section>
-      <section class="grid" aria-label="Finova principles">
-        <article class="card"><h2>Local by default</h2><p>Transactions and budgets stay in the app unless you choose an export.</p></article>
-        <article class="card"><h2>No account or bank login</h2><p>Start with an empty ledger and enter only the records you want to track.</p></article>
-        <article class="card"><h2>Plain-language limits</h2><p>Finova is a record-keeping tool, not financial, tax, legal, credit, or investment advice.</p></article>
-      </section>
-      <nav class="links" aria-label="Legal and support">
-        <a href="privacy.html">Privacy Policy</a>
-        <a href="terms.html">Terms of Use</a>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header" id="top">
+      <a class="brand" href="#top" aria-label="Finova home">
+        <span class="brand-mark" aria-hidden="true">F</span>
+        <span>Finova</span>
+      </a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav">
+        <span>Menu</span><span class="nav-toggle-mark" aria-hidden="true"></span>
+      </button>
+      <nav class="site-nav" id="site-nav" aria-label="Primary navigation">
+        <a href="#demo">Demo</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#privacy">Privacy</a>
         <a href="support.html">Support</a>
+        <a class="nav-action" href="#demo">Explore demo</a>
       </nav>
-      <footer>This static site does not accept finance data, credentials, or payments.</footer>
+    </header>
+
+    <main id="main">
+      <section class="hero shell" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span aria-hidden="true">●</span> Local-first money records</p>
+          <h1 id="hero-title">Your money,<br /><em>without the mystery.</em></h1>
+          <p class="hero-lede">Record what matters, see where it went, and keep the ledger on your iPhone. No bank login. No required account. No feed designed to make you anxious.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#demo">Explore the ledger</a>
+            <a class="button button-secondary" href="#privacy">See the privacy boundary</a>
+          </div>
+          <p class="release-status"><span aria-hidden="true"></span> App Store release in preparation</p>
+        </div>
+
+        <section class="ledger-demo" id="demo" aria-label="Finova ledger demo" data-demo-stage="budget">
+          <div class="demo-heading">
+            <div>
+              <p class="demo-kicker">August ledger</p>
+              <h2>A transaction, fully accounted for.</h2>
+            </div>
+            <p class="demo-local"><span aria-hidden="true">◆</span> On this device</p>
+          </div>
+
+          <div class="stage-controls" aria-label="Demo stages">
+            <button type="button" data-demo-select="empty" aria-pressed="false"><span>01</span>Start</button>
+            <button type="button" data-demo-select="entered" aria-pressed="false"><span>02</span>Add transaction</button>
+            <button type="button" data-demo-select="categorized" aria-pressed="false"><span>03</span>Categorize</button>
+            <button type="button" data-demo-select="budget" aria-pressed="true"><span>04</span>Update budget</button>
+          </div>
+
+          <div class="ledger-sheet">
+            <div class="ledger-head" aria-hidden="true"><span>Entry</span><span>Category</span><span>Amount</span></div>
+            <div class="ledger-row ledger-row-baseline">
+              <span class="entry-icon income" aria-hidden="true">↗</span>
+              <span class="entry-copy"><strong>Paycheck</strong><small>Aug 01</small></span>
+              <span class="entry-category">Income</span>
+              <span class="entry-amount positive">+$4,850.00</span>
+            </div>
+            <div class="ledger-ready">
+              <span class="ready-plus" aria-hidden="true">+</span>
+              <span><strong>Ready for a new entry</strong><small>Finova starts empty. You choose every record.</small></span>
+            </div>
+            <div class="ledger-row ledger-row-new">
+              <span class="entry-icon expense" aria-hidden="true">↘</span>
+              <span class="entry-copy"><strong>Neighborhood Market</strong><small>Aug 09 · Manual entry</small></span>
+              <span class="entry-category category-new">Unsorted</span>
+              <span class="entry-category category-final">Groceries</span>
+              <span class="entry-amount negative">−$86.40</span>
+            </div>
+            <div class="budget-update">
+              <div class="budget-copy">
+                <span>Groceries budget</span>
+                <strong>$413.60 left</strong>
+              </div>
+              <div class="budget-track" role="progressbar" aria-label="Groceries budget used" aria-valuemin="0" aria-valuemax="500" aria-valuenow="86.4">
+                <span></span>
+              </div>
+              <p>$86.40 of $500.00 recorded</p>
+            </div>
+          </div>
+
+          <div class="demo-footer">
+            <p class="demo-status" aria-live="polite" data-demo-status>Budget updated. $413.60 remains.</p>
+            <div class="demo-actions">
+              <button type="button" data-demo-toggle>Pause demo</button>
+              <button type="button" data-demo-replay>Replay</button>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="trust-strip" aria-label="Finova privacy principles">
+        <div><span>01</span><strong>No required account</strong><small>Open an empty ledger and begin only when you choose.</small></div>
+        <div><span>02</span><strong>No bank connection</strong><small>Finova never asks for banking credentials.</small></div>
+        <div><span>03</span><strong>User-directed exports</strong><small>Data leaves the app only through an export you start.</small></div>
+      </section>
+
+      <section class="section shell" id="how-it-works" aria-labelledby="how-title">
+        <div class="section-intro">
+          <p class="eyebrow">A ledger, not a lecture</p>
+          <h2 id="how-title">Three deliberate steps.</h2>
+          <p>Finova turns records you enter into straightforward summaries. It does not guess, recommend, or sell your attention.</p>
+        </div>
+        <div class="process-grid">
+          <article><span>Record</span><h3>Add the transaction you want to remember.</h3><p>Amount, date, note, and category—nothing more is required.</p></article>
+          <article><span>Organize</span><h3>Keep budgets and recurring items together.</h3><p>See what has been recorded against the limits you set yourself.</p></article>
+          <article><span>Understand</span><h3>Read exact, deterministic summaries.</h3><p>Monthly totals come from your ledger, not a prediction model.</p></article>
+        </div>
+      </section>
+
+      <section class="section section-ink" aria-labelledby="capabilities-title">
+        <div class="shell capabilities-layout">
+          <div class="section-intro inverse">
+            <p class="eyebrow">Built for calm review</p>
+            <h2 id="capabilities-title">Enough structure.<br />No financial theater.</h2>
+          </div>
+          <div class="capability-list">
+            <article><span>01</span><div><h3>Transactions</h3><p>Searchable manual records with exact minor-unit amounts.</p></div></article>
+            <article><span>02</span><div><h3>Budgets</h3><p>Monthly category limits compared with what you recorded.</p></div></article>
+            <article><span>03</span><div><h3>Recurring items</h3><p>Expected bills and repeating entries stay visible before they surprise you.</p></div></article>
+            <article><span>04</span><div><h3>Backups and exports</h3><p>Create a user-directed portable copy when you decide to.</p></div></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section shell privacy-layout" id="privacy" aria-labelledby="privacy-title">
+        <div class="privacy-seal" aria-hidden="true"><span>LOCAL</span><strong>BY<br />DEFAULT</strong></div>
+        <div class="section-intro privacy-copy">
+          <p class="eyebrow">The boundary is the feature</p>
+          <h2 id="privacy-title">Your ledger belongs on your device.</h2>
+          <p>Finova stores records locally unless you initiate an export. This website accepts no finance data, credentials, accounts, or payments.</p>
+          <p class="limit-note">Finova is a record-keeping tool, not financial, tax, legal, credit, or investment advice.</p>
+          <nav class="policy-links" aria-label="Policies and support">
+            <a href="privacy.html">Privacy Policy <span aria-hidden="true">↗</span></a>
+            <a href="terms.html">Terms of Use <span aria-hidden="true">↗</span></a>
+            <a href="support.html">Support <span aria-hidden="true">↗</span></a>
+          </nav>
+        </div>
+      </section>
+
+      <section class="closing shell" aria-labelledby="closing-title">
+        <p class="eyebrow">Finova for iPhone</p>
+        <h2 id="closing-title">Keep the record.<br /><em>Lose the noise.</em></h2>
+        <p>The iOS release is being prepared. Explore the demo now and review the public policies before launch.</p>
+        <a class="button button-primary" href="#demo">Replay the ledger demo</a>
+      </section>
     </main>
+
+    <footer class="site-footer">
+      <a class="brand footer-brand" href="#top"><span class="brand-mark" aria-hidden="true">F</span><span>Finova</span></a>
+      <p>Local-first personal finance records for iPhone.</p>
+      <nav aria-label="Footer navigation"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="support.html">Support</a></nav>
+    </footer>
   </body>
 </html>
