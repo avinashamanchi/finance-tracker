@@ -1,11 +1,15 @@
 # Finova iOS release checklist
 
+Current audit date: 2026-08-14.
+
 Status vocabulary: `PASS`, `FAIL`, `BLOCKED`, `UNVERIFIED`. A local green check is not evidence of signing, submission, Apple approval, or publication.
 
 The automated record below covers the current local candidate. It is local evidence only and does not replace signed-device, provider, App Store Connect, or Apple review evidence.
 
 ## Code-complete local gates
 
+- [x] Apple's June 2026 review changes were rechecked. Finova's prepared age-rating answer for social-media capabilities is `No`: it has no social feed/discovery or many-user redistribution of user content. The account holder must enter that answer in App Store Connect, and any future community feature reopens the review.
+- [x] Expo SDK 54 is deliberately retained for the tested iOS 15.1+ surface. Expo's current `sdk-54` EAS image uses Xcode 26.0 and can meet Apple's iOS 26 SDK upload floor; the exact EAS build log and processed archive remain required proof. Expo Go is not production validation.
 - [x] Native Expo Router experience with Home, Transactions, Budgets, Expected Bills, Savings Goals, Insights, Settings, Privacy, Terms, and Support.
 - [x] Expo Go-compatible free core flows and paywall preview; StoreKit purchase and restore require a signed development/TestFlight build.
 - [x] Empty-by-default local SQLite ledger with validated add, edit, search, filter, delete, and idempotent migration boundaries.
@@ -29,17 +33,18 @@ The automated record below covers the current local candidate. It is local evide
 - [x] The one-time paywall exposes Restore Purchases, Privacy, Terms, and official Apple purchase/refund help while continuing to state that Plus does not renew.
 - [x] `apple-review-guideline-applicability.md` records all Apple guideline families, app-specific evidence, external gates, and absent capabilities that cannot be added without re-review.
 - [x] A production-only Expo config plugin strips unused Bonjour/local-network declarations, disables arbitrary ATS loads, and removes localhost transport exceptions from the generated release Info.plist; a sanitized production prebuild was inspected and contained none of those development declarations.
+- [x] The app target generates a valid source privacy manifest with tracking disabled, no tracking domains, and an unlinked/non-tracking Purchase History declaration for App Functionality and Analytics. Ledger content remains local. RevenueCat's pinned native manifests were inspected from their tagged source, but the exact archive privacy report remains a signed-build gate.
 
 ## Automated verification record
 
-Fresh local verification on 2026-08-11:
+Fresh local verification on 2026-08-14:
 
 - Mobile: 44 suites / 250 tests, plus 3 focused scale suites / 4 tests; TypeScript, lint, Expo Doctor 18/18, and a cache-cleared 1,349-module iOS export with a 5.54 MB Hermes bundle.
-- Dependency gate: raw npm audit reports 11 high-severity transitive package entries, all rooted only in `image-size` advisories GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq through Expo/Metro. npm proposes a breaking Expo/React Native downgrade and no safe published in-range resolution exists. The checked-in gate accepts only those two advisory sources and fails closed on any new high or critical advisory.
+- Dependency gate: raw npm audit reports 11 high-severity transitive package entries, all rooted only in `image-size` advisories GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq through Expo/Metro. npm proposes a breaking Expo/React Native downgrade and no safe published in-range resolution exists. The checked-in gate accepts only those two advisory sources and fails closed on any new high or critical advisory. The separate 2026-08-14 `nanoid` advisory was remediated to `3.3.18` rather than allowlisted.
 - Hosted security: GitHub Dependabot alerts and automated security fixes are enabled. CodeQL default setup uses the extended query suite for Actions and JavaScript/TypeScript, the current PR scan passed, and all workflow actions are pinned to immutable commit SHAs.
-- Scale profile: the deterministic 100,000-transaction Node SQLite fixture completed in 854.579 ms; p95 first-page, FTS search, and aggregate timings were 0.048 ms, 8.043 ms, and 1.004 ms. This is content-free regression evidence, not a physical-device result or a live concurrent-user claim.
+- Scale profile: the deterministic 100,000-transaction Node SQLite fixture completed setup in 1,693.925 ms; p95 first-page, FTS search, and aggregate timings were 0.564 ms, 3.689 ms, and 1.902 ms. This is content-free regression evidence, not a physical-device result or a live concurrent-user claim.
 - Release structure: all three workflow YAML files parse, the tracked-plus-export secret scan passes across 259 files, and the icon is an opaque 1024×1024 PNG.
-- Public policy status: anonymous checks on 2026-08-11 returned HTTPS 200 for Privacy, Terms, and Support, and each response matched its tracked `public/` file byte for byte.
+- Public policy status: anonymous checks on 2026-08-14 returned HTTPS 200 for Privacy, Terms, and Support, and each response matched its tracked `public/` file byte for byte.
 - The quarantined Create React App source is unsupported archaeology. Its package and lock contain no dependencies or runnable scripts and audit at zero vulnerabilities; it has no deploy path. GitHub Pages now serves only the reviewed static legal/support surface, and stale root `build/` output is not release evidence.
 
 ## Expo Go and physical-device gates
@@ -61,13 +66,14 @@ Fresh local verification on 2026-08-11:
 - [ ] `BLOCKED` — App Store Connect record has primary language, SKU, availability, seller/copyright, export compliance, content rights, age rating, category, Digital Services Act trader status, and App Privacy answers.
 - [ ] `BLOCKED` — the exact archive privacy report and bundled third-party privacy manifests agree with Purchase History for Analytics/App Functionality, not linked, and not tracking.
 - [ ] `BLOCKED` — Apple's updated age-rating questionnaire is completed for the exact submitted version.
+- [ ] `BLOCKED` — the age-rating form's social-media-capability response is entered as `No`, matching the submitted binary; change it only after a fresh capability/policy review.
 - [ ] `BLOCKED` — Accessibility Nutrition Label answers are based on the signed-device VoiceOver, Voice Control, Larger Text, contrast, and Reduce Motion results above; no unverified support is claimed.
 - [ ] `BLOCKED` — product page name, icon, subtitle, description, promotional text, keywords, and 1–10 screenshots are complete, accurate, localized where offered, and contain no placeholder or private finance data.
 - [ ] `BLOCKED` — required device capabilities and every generated Info.plist usage description match the exact archive and are exercised on a current iOS 26 device.
 - [ ] `BLOCKED` — Mac with Apple silicon and Apple Vision Pro availability are explicitly disabled for v1 unless the exact signed iPhone build and local-data behavior are separately tested and supported there.
 - [ ] `BLOCKED` — Finova Plus non-consumable, RevenueCat entitlement/offering, localized price, Family Sharing choice, sandbox purchase/cancel/restore/reinstall behavior, and App Review purchase screenshot.
 - [ ] `BLOCKED` — Family Sharing, subscriptions, trials, offer codes, win-back offers, promoted IAP, and external digital payments remain disabled for v1.
-- [x] Privacy, Terms, and Support returned HTTPS 200 anonymously on 2026-08-11 and matched the tracked release files byte for byte; recheck immediately before submission.
+- [x] Privacy, Terms, and Support returned HTTPS 200 anonymously on 2026-08-14 and matched the tracked release files byte for byte; recheck immediately before submission.
 - [ ] `BLOCKED` — 1–10 accepted iPhone screenshots captured from the exact TestFlight binary using `screenshot-matrix.md`.
 - [ ] `BLOCKED` — TestFlight processing, installation, full device regression, and reviewer notes verified.
 - [ ] `BLOCKED` — reviewer notes state that no credentials are required and give the exact synthetic local-ledger, encrypted-backup, one-time purchase, restore, and Delete All path.
@@ -76,4 +82,4 @@ Fresh local verification on 2026-08-11:
 
 No App Store acceptance or publication is claimed by this checklist.
 
-Current environment boundary on 2026-08-11: EAS is not logged in; CocoaPods 1.17.0 is installed; only Apple Command Line Tools are selected and full Xcode is unavailable. Signed build, StoreKit sandbox, TestFlight, upload, review, and publication therefore remain external gates.
+Current environment boundary on 2026-08-14: EAS is not logged in; CocoaPods 1.17.0 is installed; only Apple Command Line Tools are selected and full Xcode is unavailable. Signed build, StoreKit sandbox, TestFlight, upload, review, and publication therefore remain external gates.

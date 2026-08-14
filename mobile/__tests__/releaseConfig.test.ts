@@ -14,6 +14,20 @@ describe('release configuration', () => {
     expect(appConfig.expo.updates).toEqual({ enabled: false });
     expect(appConfig.expo.ios.usesAppleSignIn).toBe(false);
     expect(appConfig.expo.ios.infoPlist.ITSAppUsesNonExemptEncryption).toBe(false);
+    expect(appConfig.expo.ios.privacyManifests).toEqual({
+      NSPrivacyTracking: false,
+      NSPrivacyTrackingDomains: [],
+      NSPrivacyCollectedDataTypes: [{
+        NSPrivacyCollectedDataType: 'NSPrivacyCollectedDataTypePurchaseHistory',
+        NSPrivacyCollectedDataTypeLinked: false,
+        NSPrivacyCollectedDataTypeTracking: false,
+        NSPrivacyCollectedDataTypePurposes: [
+          'NSPrivacyCollectedDataTypePurposeAppFunctionality',
+          'NSPrivacyCollectedDataTypePurposeAnalytics',
+        ],
+      }],
+      NSPrivacyAccessedAPITypes: [],
+    });
   });
 
   it('fails closed when a production build lacks a real public RevenueCat Apple key', () => {
@@ -25,6 +39,9 @@ describe('release configuration', () => {
       expect(() => dynamicAppConfig({ config: appConfig.expo } as never))
         .toThrow('EXPO_PUBLIC_REVENUECAT_IOS_API_KEY');
       process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY = 'appl_replace_with_revenuecat_public_sdk_key';
+      expect(() => dynamicAppConfig({ config: appConfig.expo } as never))
+        .toThrow('EXPO_PUBLIC_REVENUECAT_IOS_API_KEY');
+      process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY = 'appl_placeholder_public_sdk_key';
       expect(() => dynamicAppConfig({ config: appConfig.expo } as never))
         .toThrow('EXPO_PUBLIC_REVENUECAT_IOS_API_KEY');
       process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY = 'appl_AbCdEfGhIjKlMnOp';

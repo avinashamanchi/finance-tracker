@@ -19,4 +19,4 @@ No reviewer credentials are required. No bank connection, Finova account, AI, be
 
 Subscriptions, trials, offer codes, win-back offers, promoted IAP, external digital payments, and Family Sharing are disabled for v1. Apple determines refund eligibility through its purchase-support process.
 
-Release URL status: anonymous checks on 2026-08-11 returned HTTPS 200 for the candidate Privacy, Terms, and Support URLs, and every response matched its tracked release file byte for byte. Recheck them immediately before submission because these notes remain a draft.
+Release URL status: anonymous checks on 2026-08-14 returned HTTPS 200 for the candidate Privacy, Terms, and Support URLs, and every response matched its tracked release file byte for byte. Recheck them immediately before submission because these notes remain a draft.
